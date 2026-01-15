@@ -7,8 +7,9 @@ A self-hosted media collection manager that syncs curated lists with your Emby l
 - **Emby Integration** - Connect your Emby server to track which items from your collections are in your library
 - **List Imports** - Import collections from MDBList, Trakt, and Letterboxd
 - **Radarr/Sonarr Integration** - Request missing movies and TV shows directly to your download managers
-- **Multi-User Support** - Each user can connect their own servers and API keys
+- **Multi-User Support** - Multiple users with admin/user roles
 - **Automatic Sync** - Schedule collection syncs to keep everything up to date
+- **Encrypted Secrets** - API keys are encrypted at rest in the database
 - **Dark Cinema UI** - Sleek, cinematic interface designed for media enthusiasts
 
 ## Quick Start
@@ -32,6 +33,13 @@ npm install
 # Generate Prisma client
 npx prisma generate
 
+# Create .env file with required secrets
+cat > .env << EOF
+JWT_SECRET=$(openssl rand -base64 32)
+ENCRYPTION_KEY=$(openssl rand -base64 32)
+DATABASE_URL="file:./data/collectarr.db"
+EOF
+
 # Initialize database
 npx prisma db push
 
@@ -48,7 +56,8 @@ npm start
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `JWT_SECRET` | Yes | Secret key for JWT tokens |
+| `JWT_SECRET` | Auto* | Secret key for JWT tokens (min 32 chars) |
+| `ENCRYPTION_KEY` | Auto* | Key for encrypting API keys (min 32 chars) |
 | `PORT` | No | Server port (default: 3000) |
 | `DATABASE_URL` | No | SQLite database path |
 | `MDBLIST_API_KEY` | No | Default MDBList API key |
@@ -56,15 +65,17 @@ npm start
 | `TRAKT_CLIENT_ID` | No | Trakt OAuth client ID |
 | `TRAKT_CLIENT_SECRET` | No | Trakt OAuth client secret |
 
+*Auto-generated on first Docker run if not provided
+
 ### Integrations
 
 #### Emby
-Connect your Emby server in Settings. Requires:
+Connect your Emby server in Settings (admin only). Requires:
 - Server URL (e.g., `http://192.168.1.100:8096`)
 - API Key (generate in Emby Dashboard → API Keys)
 
 #### Radarr / Sonarr
-Add your Radarr/Sonarr servers in Settings. Requires:
+Add your Radarr/Sonarr servers in Settings (admin only). Requires:
 - Server URL (e.g., `http://192.168.1.100:7878`)
 - API Key (found in Settings → General)
 
@@ -88,14 +99,39 @@ npm run typecheck
 
 # Run tests
 npm test
+
+# Lint
+npm run lint
 ```
 
-## Tech Stack
+## Architecture
 
 - **Backend**: Fastify, Prisma, TypeScript
-- **Frontend**: React, Vite, TailwindCSS
+- **Frontend**: React 19, Vite, TailwindCSS
 - **Database**: SQLite
-- **Auth**: JWT
+- **Auth**: JWT with bcrypt password hashing
+- **Security**: AES-256-CBC encryption for stored API keys
+
+## Docker
+
+### Production
+```bash
+docker compose up -d
+```
+
+### Custom Configuration
+```bash
+# With explicit secrets
+JWT_SECRET=your-secret ENCRYPTION_KEY=your-key docker compose up -d
+
+# With external database volume
+docker compose up -d -v /path/to/data:/app/data
+```
+
+### Build from Source
+```bash
+docker compose up -d --build
+```
 
 ## License
 
