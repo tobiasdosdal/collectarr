@@ -10,6 +10,10 @@ interface MdblistConnectBody {
   apiKey?: string;
 }
 
+interface TmdbConnectBody {
+  apiKey?: string;
+}
+
 interface TraktTokenResponse {
   access_token: string;
   refresh_token: string;
@@ -52,6 +56,7 @@ export default async function settingsRoutes(fastify: FastifyInstance): Promise<
     return {
       traktConnected: !!settings.traktAccessToken,
       mdblistConnected: !!settings.mdblistApiKey,
+      tmdbConnected: !!settings.tmdbApiKey,
     };
   });
 
@@ -219,6 +224,48 @@ export default async function settingsRoutes(fastify: FastifyInstance): Promise<
       create: { id: 'singleton' },
       update: {
         mdblistApiKey: null,
+      },
+    });
+
+    return { success: true };
+  });
+
+  // PUT /settings/tmdb - Connect TMDB (admin only)
+  fastify.put<{ Body: TmdbConnectBody }>('/tmdb', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
+    const { apiKey } = request.body;
+
+    if (!apiKey) {
+      return reply.code(400).send({
+        error: 'Bad Request',
+        message: 'API key is required',
+      });
+    }
+
+    await fastify.prisma.settings.upsert({
+      where: { id: 'singleton' },
+      create: {
+        id: 'singleton',
+        tmdbApiKey: apiKey,
+      },
+      update: {
+        tmdbApiKey: apiKey,
+      },
+    });
+
+    return { success: true };
+  });
+
+  // DELETE /settings/tmdb - Disconnect TMDB (admin only)
+  fastify.delete('/tmdb', {
+    preHandler: [requireAdmin],
+  }, async () => {
+    await fastify.prisma.settings.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton' },
+      update: {
+        tmdbApiKey: null,
       },
     });
 

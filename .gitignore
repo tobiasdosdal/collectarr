@@ -11,6 +11,9 @@ node_modules/
 *.db-journal
 data/
 
+# Documentation reports
+docs/
+
 # Build outputs
 dist/
 client/dist/
