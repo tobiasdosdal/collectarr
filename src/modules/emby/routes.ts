@@ -1,11 +1,12 @@
 /**
  * Emby Server Management Routes
  * Handles Emby server configuration and sync operations
+ * Servers are now global (shared across all users)
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { createEmbyClient } from './client.js';
-import { syncUserCollections, removeCollectionFromEmby } from './sync-service.js';
+import { syncCollections, removeCollectionFromEmby } from './sync-service.js';
 import { encryptApiKey, decryptApiKey } from '../../utils/api-key-crypto.js';
 
 interface ServerParams {
@@ -51,16 +52,25 @@ interface SyncLogsQuery {
   embyServerId?: string;
 }
 
+// Helper to check admin status for write operations
+const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
+  if (!request.user || !request.user.isAdmin) {
+    return reply.code(403).send({
+      error: 'Forbidden',
+      message: 'Admin access required',
+    });
+  }
+};
+
 export default async function embyRoutes(fastify: FastifyInstance): Promise<void> {
   // All routes require authentication
   fastify.addHook('onRequest', fastify.authenticate);
 
   /**
-   * GET /emby/servers - List user's Emby servers
+   * GET /emby/servers - List all Emby servers (global)
    */
-  fastify.get('/servers', async (request: FastifyRequest) => {
+  fastify.get('/servers', async () => {
     const servers = await fastify.prisma.embyServer.findMany({
-      where: { userId: request.user!.id },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -74,9 +84,11 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
   });
 
   /**
-   * POST /emby/servers - Add a new Emby server
+   * POST /emby/servers - Add a new Emby server (admin only)
    */
-  fastify.post<{ Body: EmbyServerBody }>('/servers', async (request, reply) => {
+  fastify.post<{ Body: EmbyServerBody }>('/servers', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { name, url, apiKey, isDefault } = request.body;
 
     if (!name || !url || !apiKey) {
@@ -106,7 +118,6 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
     // If setting as default, unset other defaults
     if (isDefault) {
       await fastify.prisma.embyServer.updateMany({
-        where: { userId: request.user!.id },
         data: { isDefault: false },
       });
     }
@@ -122,7 +133,6 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
 
     const server = await fastify.prisma.embyServer.create({
       data: {
-        userId: request.user!.id,
         name,
         url: url.replace(/\/$/, ''), // Remove trailing slash
         apiKey: encryptedKey.apiKey,
@@ -160,11 +170,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
    * GET /emby/servers/:id - Get server details
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id', async (request, reply) => {
-    const server = await fastify.prisma.embyServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.embyServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -199,16 +206,15 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
   });
 
   /**
-   * PATCH /emby/servers/:id - Update server config
+   * PATCH /emby/servers/:id - Update server config (admin only)
    */
-  fastify.patch<{ Params: ServerParams; Body: EmbyServerBody }>('/servers/:id', async (request, reply) => {
+  fastify.patch<{ Params: ServerParams; Body: EmbyServerBody }>('/servers/:id', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { name, url, apiKey, isDefault } = request.body;
 
-    const server = await fastify.prisma.embyServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.embyServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -242,7 +248,7 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
     // If setting as default, unset other defaults
     if (isDefault) {
       await fastify.prisma.embyServer.updateMany({
-        where: { userId: request.user!.id, id: { not: server.id } },
+        where: { id: { not: server.id } },
         data: { isDefault: false },
       });
     }
@@ -279,14 +285,13 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
   });
 
   /**
-   * DELETE /emby/servers/:id - Remove server
+   * DELETE /emby/servers/:id - Remove server (admin only)
    */
-  fastify.delete<{ Params: ServerParams }>('/servers/:id', async (request, reply) => {
-    const server = await fastify.prisma.embyServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+  fastify.delete<{ Params: ServerParams }>('/servers/:id', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
+    const server = await fastify.prisma.embyServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -307,11 +312,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
    * GET /emby/servers/:id/libraries - Get server libraries
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id/libraries', async (request, reply) => {
-    const server = await fastify.prisma.embyServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.embyServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -343,11 +345,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
    * GET /emby/servers/:id/collections - Get collections on server
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id/collections', async (request, reply) => {
-    const server = await fastify.prisma.embyServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.embyServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -378,8 +377,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
    * POST /emby/sync - Sync all collections to all servers
    */
   fastify.post('/sync', async (request: FastifyRequest) => {
-    const result = await syncUserCollections({
-      userId: request.user!.id,
+    const result = await syncCollections({
+      userId: request.user?.id,
       prisma: fastify.prisma,
     });
 
@@ -390,11 +389,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
    * POST /emby/sync/collection/:collectionId - Sync specific collection
    */
   fastify.post<{ Params: CollectionIdParams }>('/sync/collection/:collectionId', async (request, reply) => {
-    const collection = await fastify.prisma.collection.findFirst({
-      where: {
-        id: request.params.collectionId,
-        userId: request.user!.id,
-      },
+    const collection = await fastify.prisma.collection.findUnique({
+      where: { id: request.params.collectionId },
       include: { items: true },
     });
 
@@ -405,8 +401,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       });
     }
 
-    const result = await syncUserCollections({
-      userId: request.user!.id,
+    const result = await syncCollections({
+      userId: request.user?.id,
       prisma: fastify.prisma,
       collectionId: collection.id,
     });
@@ -418,11 +414,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
    * POST /emby/sync/server/:serverId - Sync to specific server
    */
   fastify.post<{ Params: ServerIdParams }>('/sync/server/:serverId', async (request, reply) => {
-    const server = await fastify.prisma.embyServer.findFirst({
-      where: {
-        id: request.params.serverId,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.embyServer.findUnique({
+      where: { id: request.params.serverId },
     });
 
     if (!server) {
@@ -432,8 +425,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       });
     }
 
-    const result = await syncUserCollections({
-      userId: request.user!.id,
+    const result = await syncCollections({
+      userId: request.user?.id,
       prisma: fastify.prisma,
       embyServerId: server.id,
     });
@@ -447,9 +440,7 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
   fastify.get<{ Querystring: SyncLogsQuery }>('/sync/logs', async (request) => {
     const { limit = '50', collectionId, embyServerId } = request.query;
 
-    const where: { userId: string; collectionId?: string; embyServerId?: string } = {
-      userId: request.user!.id,
-    };
+    const where: { collectionId?: string; embyServerId?: string } = {};
     if (collectionId) where.collectionId = collectionId;
     if (embyServerId) where.embyServerId = embyServerId;
 
@@ -459,11 +450,11 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       take: parseInt(limit, 10),
       include: {
         embyServer: { select: { name: true } },
-        collection: { 
-          select: { 
+        collection: {
+          select: {
             id: true,
-            name: true 
-          } 
+            name: true
+          }
         },
       },
     });
@@ -485,16 +476,14 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
   });
 
   /**
-   * POST /emby/servers/:serverId/remove-collection - Remove collection from Emby
+   * POST /emby/servers/:serverId/remove-collection - Remove collection from Emby (admin only)
    */
   fastify.post<{ Params: ServerIdParams; Body: RemoveCollectionBody }>(
     '/servers/:serverId/remove-collection',
+    { preHandler: [requireAdmin] },
     async (request, reply) => {
-      const server = await fastify.prisma.embyServer.findFirst({
-        where: {
-          id: request.params.serverId,
-          userId: request.user!.id,
-        },
+      const server = await fastify.prisma.embyServer.findUnique({
+        where: { id: request.params.serverId },
       });
 
       if (!server) {
@@ -519,11 +508,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
   fastify.post<{ Params: ServerIdParams; Body: SearchBody }>(
     '/servers/:serverId/search',
     async (request, reply) => {
-      const server = await fastify.prisma.embyServer.findFirst({
-        where: {
-          id: request.params.serverId,
-          userId: request.user!.id,
-        },
+      const server = await fastify.prisma.embyServer.findUnique({
+        where: { id: request.params.serverId },
       });
 
       if (!server) {

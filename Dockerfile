@@ -57,6 +57,10 @@ COPY --from=frontend-builder /app/dist ./dist
 # Create data directory for SQLite
 RUN mkdir -p /app/data
 
+# Copy entrypoint script
+COPY docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh
+
 # Environment
 ENV NODE_ENV=production
 ENV DATABASE_URL="file:/app/data/collectarr.db"
@@ -69,5 +73,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
-# Run migrations and start
-CMD ["sh", "-c", "npx prisma db push && node dist/server.js"]
+# Auto-generates secrets if not provided
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

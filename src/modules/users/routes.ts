@@ -86,7 +86,7 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
     if (!validation.success) {
       return reply.code(400).send({
         error: 'Validation Error',
-        details: validation.error.flatten().fieldErrors,
+        details: z.flattenError(validation.error).fieldErrors,
       });
     }
 
@@ -157,7 +157,7 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
     if (!validation.success) {
       return reply.code(400).send({
         error: 'Validation Error',
-        details: validation.error.flatten().fieldErrors,
+        details: z.flattenError(validation.error).fieldErrors,
       });
     }
 

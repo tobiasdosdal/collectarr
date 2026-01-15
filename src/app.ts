@@ -36,6 +36,9 @@ import sonarrRoutes from './modules/sonarr/routes.js';
 // Images
 import imageRoutes from './modules/images/routes.js';
 
+// Global settings
+import settingsRoutes from './modules/settings/routes.js';
+
 export async function buildApp(fastify: FastifyInstance): Promise<void> {
   fastify.decorate('config', config);
 
@@ -155,6 +158,8 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
     api.register(jobsRoutes, { prefix: '/jobs' });
 
     api.register(imageRoutes, { prefix: '/images' });
+
+    api.register(settingsRoutes, { prefix: '/settings' });
   }, { prefix: '/api/v1' });
 
   if (config.server.env === 'production') {

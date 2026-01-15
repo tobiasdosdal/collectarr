@@ -15,24 +15,13 @@ A self-hosted media collection manager that syncs curated lists with your Emby l
 
 ### Docker (Recommended)
 
-1. Create a `.env` file:
-```bash
-# Required
-JWT_SECRET=your-secure-random-string  # Generate with: openssl rand -base64 32
-
-# Optional API keys
-MDBLIST_API_KEY=
-TMDB_API_KEY=
-TRAKT_CLIENT_ID=
-TRAKT_CLIENT_SECRET=
-```
-
-2. Run with Docker Compose:
 ```bash
 docker compose up -d
 ```
 
-3. Access at `http://localhost:3000`
+That's it! Secrets are auto-generated on first run and persisted in the data volume.
+
+Access at `http://localhost:3000`
 
 ### Manual Installation
 

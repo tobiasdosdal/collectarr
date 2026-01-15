@@ -8,48 +8,48 @@ datasource db {
 }
 
 model User {
-  id                String    @id @default(uuid())
-  email             String    @unique
-  passwordHash      String
-  apiKey            String    @unique @default(uuid())
-  isAdmin           Boolean   @default(false)
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  apiKey       String    @unique @default(uuid())
+  isAdmin      Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  syncLogs SyncLog[]
+
+  @@index([apiKey])
+  @@index([isAdmin])
+}
+
+model Settings {
+  id                String    @id @default("singleton")
   traktAccessToken  String?
   traktRefreshToken String?
   traktExpiresAt    DateTime?
   mdblistApiKey     String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-
-  collections   Collection[]
-  embyServers   EmbyServer[]
-  radarrServers RadarrServer[]
-  sonarrServers SonarrServer[]
-  syncLogs      SyncLog[]
-
-  @@index([apiKey])
-  @@index([isAdmin])
 }
 
 model Collection {
-  id           String   @id @default(uuid())
-  userId       String
+  id           String    @id @default(uuid())
   name         String
   description  String?
   sourceType   String
   sourceId     String?
   sourceUrl    String?
   posterPath   String?
-  isEnabled    Boolean  @default(true)
-  syncInterval Int      @default(24)
+  isEnabled    Boolean   @default(true)
+  syncInterval Int       @default(24)
   lastSyncAt   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items CollectionItem[]
+  items    CollectionItem[]
   syncLogs SyncLog[]
 
-  @@unique([userId, sourceType, sourceId])
+  @@unique([sourceType, sourceId])
 }
 
 model CollectionItem {
@@ -84,49 +84,46 @@ model CollectionItem {
 
 model EmbyServer {
   id        String   @id @default(uuid())
-  userId    String
   name      String
-  url       String
+  url       String   @unique
   apiKey    String
-  apiKeyIv String?
+  apiKeyIv  String?
   isDefault Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   syncLogs SyncLog[]
 
-  @@unique([userId, url])
-  @@index([userId, isDefault])
+  @@index([isDefault])
 }
 
 model SyncLog {
-  id            String   @id @default(uuid())
-  userId        String
-  embyServerId  String?
-  collectionId  String?
-  status        String
-  itemsTotal    Int      @default(0)
-  itemsMatched  Int      @default(0)
-  itemsFailed   Int      @default(0)
-  errorMessage  String?
-  details       String?
-  startedAt     DateTime @default(now())
-  completedAt   DateTime?
+  id           String    @id @default(uuid())
+  userId       String?
+  embyServerId String?
+  collectionId String?
+  status       String
+  itemsTotal   Int       @default(0)
+  itemsMatched Int       @default(0)
+  itemsFailed  Int       @default(0)
+  errorMessage String?
+  details      String?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
 
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
   embyServer EmbyServer? @relation(fields: [embyServerId], references: [id], onDelete: Cascade)
   collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
 
   @@index([userId, startedAt])
+  @@index([startedAt])
   @@index([status, startedAt])
 }
 
 model RadarrServer {
   id               String   @id @default(uuid())
-  userId           String
   name             String
-  url              String
+  url              String   @unique
   apiKey           String
   apiKeyIv         String?
   isDefault        Boolean  @default(false)
@@ -134,18 +131,12 @@ model RadarrServer {
   rootFolderPath   String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, url])
-  @@index([userId])
 }
 
 model SonarrServer {
   id               String   @id @default(uuid())
-  userId           String
   name             String
-  url              String
+  url              String   @unique
   apiKey           String
   apiKeyIv         String?
   isDefault        Boolean  @default(false)
@@ -153,9 +144,4 @@ model SonarrServer {
   rootFolderPath   String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, url])
-  @@index([userId])
 }

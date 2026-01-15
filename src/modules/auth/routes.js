@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
+import { z } from 'zod';
 import { registerSchema, loginSchema } from './schemas.js';
 
 export default async function authRoutes(fastify, opts) {
@@ -27,7 +28,7 @@ export default async function authRoutes(fastify, opts) {
     if (!validation.success) {
       return reply.code(400).send({
         error: 'Validation Error',
-        details: validation.error.flatten().fieldErrors,
+        details: z.flattenError(validation.error).fieldErrors,
       });
     }
 
@@ -92,7 +93,7 @@ export default async function authRoutes(fastify, opts) {
         fastify.log.debug('Login validation failed', { errors: validation.error.flatten().fieldErrors });
         return reply.code(400).send({
           error: 'Validation Error',
-          details: validation.error.flatten().fieldErrors,
+          details: z.flattenError(validation.error).fieldErrors,
         });
       }
 

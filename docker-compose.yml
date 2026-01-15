@@ -12,8 +12,10 @@ services:
       - PORT=3000
       - HOST=0.0.0.0
       - DATABASE_URL=file:/app/data/collectarr.db
-      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      # Secrets auto-generated on first run if not provided
+      - JWT_SECRET=${JWT_SECRET:-}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      # Optional integrations
       - MDBLIST_API_KEY=${MDBLIST_API_KEY:-}
       - TMDB_API_KEY=${TMDB_API_KEY:-}
       - TRAKT_CLIENT_ID=${TRAKT_CLIENT_ID:-}

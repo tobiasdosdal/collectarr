@@ -19,7 +19,7 @@ export const validateUuid = async (
     if (!result.success) {
       reply.code(400).send({
         error: 'Validation Error',
-        message: result.error.errors[0]?.message ?? 'Invalid ID',
+        message: result.error.issues[0]?.message ?? 'Invalid ID',
       });
       return;
     }

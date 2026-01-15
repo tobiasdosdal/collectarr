@@ -1,23 +1,8 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
+import { z } from 'zod';
 import { registerSchema, loginSchema } from './schemas.js';
-import { generateStateToken, verifyStateToken } from '../../utils/oauth-state.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-
-interface TraktCallbackQuery {
-  code?: string;
-  state?: string;
-}
-
-interface MdblistConnectBody {
-  apiKey?: string;
-}
-
-interface TraktTokenResponse {
-  access_token: string;
-  refresh_token: string;
-  expires_in: number;
-}
 
 export default async function authRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post('/register', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -25,7 +10,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     if (!validation.success) {
       return reply.code(400).send({
         error: 'Validation Error',
-        details: validation.error.flatten().fieldErrors,
+        details: z.flattenError(validation.error).fieldErrors,
       });
     }
 
@@ -70,10 +55,10 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
       const validation = loginSchema.safeParse(request.body);
       if (!validation.success) {
-        fastify.log.debug({ errors: validation.error.flatten().fieldErrors }, 'Login validation failed');
+        fastify.log.debug({ errors: z.flattenError(validation.error).fieldErrors }, 'Login validation failed');
         return reply.code(400).send({
           error: 'Validation Error',
-          details: validation.error.flatten().fieldErrors,
+          details: z.flattenError(validation.error).fieldErrors,
         });
       }
 
@@ -129,16 +114,24 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         id: true,
         email: true,
         apiKey: true,
+        isAdmin: true,
+        createdAt: true,
+      },
+    });
+
+    // Get connection status from global Settings
+    const settings = await fastify.prisma.settings.findUnique({
+      where: { id: 'singleton' },
+      select: {
         traktAccessToken: true,
         mdblistApiKey: true,
-        createdAt: true,
       },
     });
 
     return {
       ...user,
-      traktConnected: !!user?.traktAccessToken,
-      mdblistConnected: !!user?.mdblistApiKey,
+      traktConnected: !!settings?.traktAccessToken,
+      mdblistConnected: !!settings?.mdblistApiKey,
     };
   });
 
@@ -156,114 +149,55 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     return { apiKey: user.apiKey };
   });
 
+  // Legacy endpoints - redirect to settings routes
+  // These are kept for backwards compatibility but point users to the new endpoints
+
   fastify.get('/trakt/authorize', {
     preHandler: [fastify.authenticate],
   }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const { trakt } = fastify.config.external;
-
-    if (!trakt.clientId) {
-      return reply.code(503).send({
-        error: 'Service Unavailable',
-        message: 'Trakt integration not configured',
-      });
-    }
-
-    const stateToken = generateStateToken(request.user!.id);
-
-    const authUrl = new URL('https://trakt.tv/oauth/authorize');
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('client_id', trakt.clientId);
-    authUrl.searchParams.set('redirect_uri', trakt.redirectUri);
-    authUrl.searchParams.set('state', stateToken);
-
-    return { authUrl: authUrl.toString() };
+    // Redirect to settings endpoint
+    return reply.redirect('/api/v1/settings/trakt/authorize');
   });
 
-  fastify.get<{ Querystring: TraktCallbackQuery }>('/trakt/callback', async (request, reply) => {
-    const { code, state } = request.query;
-
-    if (!code || !state) {
-      return reply.code(400).send({
-        error: 'Bad Request',
-        message: 'Missing code or state parameter',
-      });
-    }
-
-    // Verify state token to prevent CSRF attacks
-    const userId = verifyStateToken(state);
-    if (!userId) {
-      return reply.code(400).send({
-        error: 'Bad Request',
-        message: 'Invalid or expired state token',
-      });
-    }
-
-    const { trakt } = fastify.config.external;
-
-    let tokenResponse: Response;
-    try {
-      tokenResponse = await fetch('https://api.trakt.tv/oauth/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code,
-          client_id: trakt.clientId,
-          client_secret: trakt.clientSecret,
-          redirect_uri: trakt.redirectUri,
-          grant_type: 'authorization_code',
-        }),
-      });
-    } catch (error) {
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        return reply.code(502).send({
-          error: 'Network Error',
-          message: 'Failed to connect to Trakt API',
-        });
-      }
-      throw error;
-    }
-
-    if (!tokenResponse.ok) {
-      return reply.code(400).send({
-        error: 'OAuth Error',
-        message: 'Failed to exchange code for tokens',
-      });
-    }
-
-    const tokens = await tokenResponse.json() as TraktTokenResponse;
-
-    await fastify.prisma.user.update({
-      where: { id: userId },
-      data: {
-        traktAccessToken: tokens.access_token,
-        traktRefreshToken: tokens.refresh_token,
-        traktExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
-      },
-    });
-
-    return { success: true, message: 'Trakt connected successfully' };
+  fastify.get('/trakt/callback', async (request: FastifyRequest, reply: FastifyReply) => {
+    // Redirect to settings endpoint with query params
+    const url = new URL(request.url, 'http://localhost');
+    return reply.redirect(`/api/v1/settings/trakt/callback${url.search}`);
   });
 
   fastify.post('/trakt/disconnect', {
     preHandler: [fastify.authenticate],
-  }, async (request: FastifyRequest) => {
-    await fastify.prisma.user.update({
-      where: { id: request.user!.id },
-      data: {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.user?.isAdmin) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        message: 'Admin access required to disconnect Trakt',
+      });
+    }
+    // Forward to settings route logic
+    await fastify.prisma.settings.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton' },
+      update: {
         traktAccessToken: null,
         traktRefreshToken: null,
         traktExpiresAt: null,
       },
     });
-
     return { success: true };
   });
 
-  fastify.post<{ Body: MdblistConnectBody }>('/mdblist/connect', {
+  fastify.post('/mdblist/connect', {
     preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    const { apiKey } = request.body;
+  }, async (request: FastifyRequest<{ Body: { apiKey?: string } }>, reply: FastifyReply) => {
+    if (!request.user?.isAdmin) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        message: 'Admin access required to connect MDBList',
+      });
+    }
 
+    const { apiKey } = request.body;
     if (!apiKey) {
       return reply.code(400).send({
         error: 'Bad Request',
@@ -271,9 +205,10 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       });
     }
 
-    await fastify.prisma.user.update({
-      where: { id: request.user!.id },
-      data: { mdblistApiKey: apiKey },
+    await fastify.prisma.settings.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton', mdblistApiKey: apiKey },
+      update: { mdblistApiKey: apiKey },
     });
 
     return { success: true };
@@ -281,10 +216,18 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
   fastify.post('/mdblist/disconnect', {
     preHandler: [fastify.authenticate],
-  }, async (request: FastifyRequest) => {
-    await fastify.prisma.user.update({
-      where: { id: request.user!.id },
-      data: { mdblistApiKey: null },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.user?.isAdmin) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        message: 'Admin access required to disconnect MDBList',
+      });
+    }
+
+    await fastify.prisma.settings.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton' },
+      update: { mdblistApiKey: null },
     });
 
     return { success: true };
