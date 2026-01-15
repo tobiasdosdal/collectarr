@@ -87,24 +87,6 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
   throw lastError;
 }
 
-export function retryable(options: RetryOptions = {}) {
-  return function <T>(
-    _target: unknown,
-    _propertyKey: string,
-    descriptor: TypedPropertyDescriptor<(...args: unknown[]) => Promise<T>>
-  ): TypedPropertyDescriptor<(...args: unknown[]) => Promise<T>> {
-    const originalMethod = descriptor.value;
-
-    if (originalMethod) {
-      descriptor.value = async function (this: unknown, ...args: unknown[]): Promise<T> {
-        return withRetry(() => originalMethod.apply(this, args), options);
-      };
-    }
-
-    return descriptor;
-  };
-}
-
 export class RateLimiter {
   private maxRequests: number;
   private windowMs: number;
@@ -142,4 +124,4 @@ export class RateLimiter {
   }
 }
 
-export default { withRetry, retryable, RateLimiter };
+export default { withRetry, RateLimiter };

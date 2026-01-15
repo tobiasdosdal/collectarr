@@ -9,13 +9,12 @@ import { ensureValidTraktTokens } from '../utils/trakt-auth.js';
 import { withRetry } from '../utils/retry.js';
 import { cacheImage } from '../utils/image-cache.js';
 import type { FastifyInstance } from 'fastify';
-import type { PrismaClient, Collection, User } from '@prisma/client';
+import type { PrismaClient, Collection, Settings } from '@prisma/client';
 import type { AppConfig } from '../types/index.js';
 import type { MDBListItem } from '../modules/external/mdblist/client.js';
 
-interface CollectionWithUser extends Collection {
-  user: Pick<User, 'id' | 'mdblistApiKey' | 'traktAccessToken' | 'traktRefreshToken' | 'traktExpiresAt'>;
-}
+// Type alias for collection data used in refresh operations
+type RefreshableCollection = Collection;
 
 interface RefreshResult {
   total: number;
@@ -51,17 +50,6 @@ export async function refreshCollectionsJob(fastify: FastifyInstance): Promise<R
       isEnabled: true,
       sourceType: { not: 'MANUAL' },
     },
-    include: {
-      user: {
-        select: {
-          id: true,
-          mdblistApiKey: true,
-          traktAccessToken: true,
-          traktRefreshToken: true,
-          traktExpiresAt: true,
-        },
-      },
-    },
   });
 
   let refreshed = 0;
@@ -78,7 +66,7 @@ export async function refreshCollectionsJob(fastify: FastifyInstance): Promise<R
     }
 
     try {
-      await refreshCollection(fastify, collection as CollectionWithUser);
+      await refreshCollection(fastify, collection);
       refreshed++;
     } catch (error) {
       log.error(`Failed to refresh collection ${collection.name}: ${(error as Error).message}`);
@@ -94,17 +82,22 @@ export async function refreshCollectionsJob(fastify: FastifyInstance): Promise<R
   };
 }
 
-async function refreshCollection(fastify: FastifyInstance, collection: CollectionWithUser): Promise<void> {
+async function refreshCollection(fastify: FastifyInstance, collection: RefreshableCollection): Promise<void> {
   const { prisma, config, log } = fastify;
 
   log.info(`Refreshing collection: ${collection.name} (${collection.sourceType})`);
+
+  // Get settings for API tokens
+  const settings = await prisma.settings.findUnique({
+    where: { id: 'singleton' },
+  });
 
   let items: CollectionItem[] = [];
 
   try {
     switch (collection.sourceType) {
       case 'MDBLIST':
-        items = await refreshFromMdblist(collection, config);
+        items = await refreshFromMdblist(collection, config, settings);
         break;
 
       case 'TRAKT_LIST':
@@ -120,7 +113,7 @@ async function refreshCollection(fastify: FastifyInstance, collection: Collectio
   } catch (error) {
     await prisma.syncLog.create({
       data: {
-        userId: collection.userId,
+        userId: null,
         collectionId: collection.id,
         status: 'FAILED',
         errorMessage: (error as Error).message,
@@ -162,7 +155,7 @@ async function refreshCollection(fastify: FastifyInstance, collection: Collectio
 
   await prisma.syncLog.create({
     data: {
-      userId: collection.userId,
+      userId: null,
       collectionId: collection.id,
       status: 'SUCCESS',
       itemsTotal: items.length,
@@ -180,8 +173,12 @@ async function refreshCollection(fastify: FastifyInstance, collection: Collectio
   log.info(`Refreshed ${collection.name}: ${items.length} items`);
 }
 
-async function refreshFromMdblist(collection: CollectionWithUser, config: AppConfig): Promise<CollectionItem[]> {
-  const apiKey = collection.user.mdblistApiKey || config.external.mdblist.apiKey;
+async function refreshFromMdblist(
+  collection: RefreshableCollection,
+  config: AppConfig,
+  settings: Settings | null
+): Promise<CollectionItem[]> {
+  const apiKey = settings?.mdblistApiKey || config.external.mdblist.apiKey;
 
   if (!apiKey) {
     throw new Error('MDBList API key not configured');
@@ -322,11 +319,11 @@ async function fetchTmdbPoster(tmdbId: string, mediaType: string): Promise<strin
 }
 
 async function refreshFromTrakt(
-  collection: CollectionWithUser,
+  collection: RefreshableCollection,
   config: AppConfig,
   prisma: PrismaClient
 ): Promise<CollectionItem[]> {
-  const accessToken = await ensureValidTraktTokens(prisma, collection.userId, config);
+  const accessToken = await ensureValidTraktTokens(prisma, config);
 
   const client = createTraktClient(
     config.external.trakt.clientId,

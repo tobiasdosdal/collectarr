@@ -17,7 +17,6 @@ export default async function syncRoutes(fastify: FastifyInstance): Promise<void
   fastify.get('/collections', async (request: FastifyRequest) => {
     const collections = await fastify.prisma.collection.findMany({
       where: {
-        userId: request.user!.id,
         isEnabled: true,
       },
       select: {
@@ -47,7 +46,6 @@ export default async function syncRoutes(fastify: FastifyInstance): Promise<void
     const collection = await fastify.prisma.collection.findFirst({
       where: {
         id,
-        userId: request.user!.id,
       },
       include: {
         items: {
@@ -95,7 +93,6 @@ export default async function syncRoutes(fastify: FastifyInstance): Promise<void
       const server = await fastify.prisma.embyServer.findFirst({
         where: {
           id: embyServerId,
-          userId: request.user!.id,
         },
       });
 
@@ -109,7 +106,7 @@ export default async function syncRoutes(fastify: FastifyInstance): Promise<void
 
     const log = await fastify.prisma.syncLog.create({
       data: {
-        userId: request.user!.id,
+        userId: request.user?.id,
         embyServerId,
         collectionId,
         status: status || 'SUCCESS',
@@ -128,10 +125,10 @@ export default async function syncRoutes(fastify: FastifyInstance): Promise<void
   fastify.get('/status', async (request: FastifyRequest) => {
     const [collectionsCount, lastSync] = await Promise.all([
       fastify.prisma.collection.count({
-        where: { userId: request.user!.id, isEnabled: true },
+        where: { isEnabled: true },
       }),
       fastify.prisma.syncLog.findFirst({
-        where: { userId: request.user!.id },
+        where: {},
         orderBy: { startedAt: 'desc' },
         select: {
           status: true,

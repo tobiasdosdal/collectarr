@@ -67,8 +67,6 @@ interface AppUser {
   isAdmin: boolean;
   createdAt: string;
   updatedAt: string;
-  collectionCount?: number;
-  embyServerCount?: number;
 }
 
 interface SyncLog {
@@ -431,24 +429,30 @@ const Settings: FC = () => {
                 : 'Connect to sync your Trakt watchlist and lists'}
             </p>
           </div>
-          {user?.traktConnected ? (
-            <button
-              className="btn btn-danger btn-sm"
-              onClick={disconnectTrakt}
-              disabled={loading.trakt}
-            >
-              <Unlink size={14} />
-              Disconnect
-            </button>
+          {user?.isAdmin ? (
+            user?.traktConnected ? (
+              <button
+                className="btn btn-danger btn-sm"
+                onClick={disconnectTrakt}
+                disabled={loading.trakt}
+              >
+                <Unlink size={14} />
+                Disconnect
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={connectTrakt}
+                disabled={loading.trakt}
+              >
+                <LinkIcon size={14} />
+                Connect
+              </button>
+            )
           ) : (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={connectTrakt}
-              disabled={loading.trakt}
-            >
-              <LinkIcon size={14} />
-              Connect
-            </button>
+            !user?.traktConnected && (
+              <span className="text-xs text-muted-foreground">Admin required to connect</span>
+            )
           )}
         </div>
 
@@ -470,46 +474,52 @@ const Settings: FC = () => {
                 : 'Add your API key to browse MDBList'}
             </p>
           </div>
-          {user?.mdblistConnected ? (
-            <button
-              className="btn btn-danger btn-sm"
-              onClick={disconnectMdblist}
-              disabled={loading.mdblist}
-            >
-              <Unlink size={14} />
-              Disconnect
-            </button>
-          ) : showMdblistInput ? (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={mdblistKey}
-                onChange={(e) => setMdblistKey(e.target.value)}
-                placeholder="API Key"
-                className="px-3 py-2 bg-secondary/50 border border-border/50 rounded-lg text-foreground text-sm"
-              />
+          {user?.isAdmin ? (
+            user?.mdblistConnected ? (
               <button
-                className="btn btn-primary btn-sm"
-                onClick={connectMdblist}
+                className="btn btn-danger btn-sm"
+                onClick={disconnectMdblist}
                 disabled={loading.mdblist}
               >
-                Save
+                <Unlink size={14} />
+                Disconnect
               </button>
+            ) : showMdblistInput ? (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={mdblistKey}
+                  onChange={(e) => setMdblistKey(e.target.value)}
+                  placeholder="API Key"
+                  className="px-3 py-2 bg-secondary/50 border border-border/50 rounded-lg text-foreground text-sm"
+                />
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={connectMdblist}
+                  disabled={loading.mdblist}
+                >
+                  Save
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowMdblistInput(false)}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
               <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => setShowMdblistInput(false)}
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowMdblistInput(true)}
               >
-                <X size={14} />
+                <Key size={14} />
+                Add Key
               </button>
-            </div>
+            )
           ) : (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => setShowMdblistInput(true)}
-            >
-              <Key size={14} />
-              Add Key
-            </button>
+            !user?.mdblistConnected && (
+              <span className="text-xs text-muted-foreground">Admin required to connect</span>
+            )
           )}
         </div>
       </div>
@@ -537,13 +547,15 @@ const Settings: FC = () => {
                 Sync All
               </button>
             )}
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => setShowAddServer(true)}
-            >
-              <Plus size={14} />
-              Add Server
-            </button>
+            {user?.isAdmin && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowAddServer(true)}
+              >
+                <Plus size={14} />
+                Add Server
+              </button>
+            )}
           </div>
         </div>
 
@@ -596,13 +608,15 @@ const Settings: FC = () => {
                   >
                     <Play size={14} className={loading[`sync-${server.id}`] ? 'spinning' : ''} />
                   </button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => deleteEmbyServer(server.id, server.name)}
-                    title="Delete server"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {user?.isAdmin && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => deleteEmbyServer(server.id, server.name)}
+                      title="Delete server"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -622,13 +636,15 @@ const Settings: FC = () => {
               <p className="text-sm text-muted-foreground m-0">Add movies to your download manager</p>
             </div>
           </div>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => setShowAddRadarr(true)}
-          >
-            <Plus size={14} />
-            Add Server
-          </button>
+          {user?.isAdmin && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => setShowAddRadarr(true)}
+            >
+              <Plus size={14} />
+              Add Server
+            </button>
+          )}
         </div>
 
         {radarrServers.length === 0 ? (
@@ -656,15 +672,17 @@ const Settings: FC = () => {
                     <p className="text-xs text-muted-foreground">Root: {server.rootFolderPath}</p>
                   )}
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => deleteRadarrServer(server.id, server.name)}
-                    title="Delete server"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                {user?.isAdmin && (
+                  <div className="flex gap-2">
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => deleteRadarrServer(server.id, server.name)}
+                      title="Delete server"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -683,13 +701,15 @@ const Settings: FC = () => {
               <p className="text-sm text-muted-foreground m-0">Add TV shows to your download manager</p>
             </div>
           </div>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => setShowAddSonarr(true)}
-          >
-            <Plus size={14} />
-            Add Server
-          </button>
+          {user?.isAdmin && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => setShowAddSonarr(true)}
+            >
+              <Plus size={14} />
+              Add Server
+            </button>
+          )}
         </div>
 
         {sonarrServers.length === 0 ? (
@@ -717,15 +737,17 @@ const Settings: FC = () => {
                     <p className="text-xs text-muted-foreground">Root: {server.rootFolderPath}</p>
                   )}
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => deleteSonarrServer(server.id, server.name)}
-                    title="Delete server"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                {user?.isAdmin && (
+                  <div className="flex gap-2">
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => deleteSonarrServer(server.id, server.name)}
+                      title="Delete server"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -768,8 +790,6 @@ const Settings: FC = () => {
                     )}
                   </h3>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
-                    <span>{appUser.collectionCount || 0} collections</span>
-                    <span>{appUser.embyServerCount || 0} Emby servers</span>
                     <span>Joined {new Date(appUser.createdAt).toLocaleDateString()}</span>
                   </div>
                 </div>

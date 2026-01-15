@@ -81,11 +81,10 @@ export async function refreshTraktToken(refreshToken: string, config: AppConfig)
 
 export async function ensureValidTraktTokens(
   prisma: PrismaClient,
-  userId: string,
   config: AppConfig
 ): Promise<string> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const settings = await prisma.settings.findUnique({
+    where: { id: 'singleton' },
     select: {
       traktAccessToken: true,
       traktRefreshToken: true,
@@ -93,19 +92,19 @@ export async function ensureValidTraktTokens(
     },
   });
 
-  if (!user?.traktAccessToken) {
+  if (!settings?.traktAccessToken) {
     throw new Error('Trakt not connected');
   }
 
-  if (tokenNeedsRefresh(user.traktExpiresAt)) {
-    if (!user.traktRefreshToken) {
+  if (tokenNeedsRefresh(settings.traktExpiresAt)) {
+    if (!settings.traktRefreshToken) {
       throw new Error('Trakt token expired and no refresh token available');
     }
 
-    const newTokens = await refreshTraktToken(user.traktRefreshToken, config);
+    const newTokens = await refreshTraktToken(settings.traktRefreshToken, config);
 
-    await prisma.user.update({
-      where: { id: userId },
+    await prisma.settings.update({
+      where: { id: 'singleton' },
       data: {
         traktAccessToken: newTokens.accessToken,
         traktRefreshToken: newTokens.refreshToken,
@@ -116,7 +115,7 @@ export async function ensureValidTraktTokens(
     return newTokens.accessToken;
   }
 
-  return user.traktAccessToken;
+  return settings.traktAccessToken;
 }
 
 export default {

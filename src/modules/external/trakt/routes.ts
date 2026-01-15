@@ -48,12 +48,12 @@ export default async function traktRoutes(fastify: FastifyInstance): Promise<voi
     let accessToken: string | undefined;
 
     if (requireAuth) {
-      const user = await fastify.prisma.user.findUnique({
-        where: { id: request.user!.id },
+      const settings = await fastify.prisma.settings.findUnique({
+        where: { id: 'singleton' },
         select: { traktAccessToken: true, traktExpiresAt: true },
       });
 
-      if (!user?.traktAccessToken) {
+      if (!settings?.traktAccessToken) {
         reply.code(400).send({
           error: 'Bad Request',
           message: 'Trakt account not connected. Please authorize in settings.',
@@ -62,7 +62,7 @@ export default async function traktRoutes(fastify: FastifyInstance): Promise<voi
       }
 
       // TODO: Check expiration and refresh if needed
-      accessToken = user.traktAccessToken;
+      accessToken = settings.traktAccessToken;
     }
 
     return createTraktClient(trakt.clientId, accessToken, trakt.baseUrl);

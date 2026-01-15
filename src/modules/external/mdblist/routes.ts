@@ -30,12 +30,12 @@ export default async function mdblistRoutes(fastify: FastifyInstance): Promise<v
 
   // Helper to get client for current user
   const getClient = async (request: FastifyRequest, reply: FastifyReply): Promise<MDBListClient | null> => {
-    const user = await fastify.prisma.user.findUnique({
-      where: { id: request.user!.id },
+    const settings = await fastify.prisma.settings.findUnique({
+      where: { id: 'singleton' },
       select: { mdblistApiKey: true },
     });
 
-    const apiKey = user?.mdblistApiKey || fastify.config.external.mdblist.apiKey;
+    const apiKey = settings?.mdblistApiKey || fastify.config.external.mdblist.apiKey;
 
     if (!apiKey) {
       reply.code(400).send({

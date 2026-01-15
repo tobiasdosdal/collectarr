@@ -67,7 +67,6 @@ export default async function jobsRoutes(fastify: FastifyInstance): Promise<void
     const collection = await fastify.prisma.collection.findFirst({
       where: {
         id: collectionId,
-        userId: request.user!.id,
       },
     });
 
