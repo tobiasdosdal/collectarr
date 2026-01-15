@@ -2,17 +2,6 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import bcrypt from 'bcrypt';
 import { z } from 'zod';
 
-interface EmbyServerParams {
-  id: string;
-}
-
-interface EmbyServerBody {
-  name?: string;
-  url?: string;
-  apiKey?: string;
-  isDefault?: boolean;
-}
-
 interface SyncLogsQuery {
   limit?: string;
   offset?: string;
@@ -52,7 +41,7 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
   // List all users (admin only)
   fastify.get('/list', {
     preHandler: [fastify.authenticate, requireAdmin],
-  }, async (request: FastifyRequest) => {
+  }, async () => {
     const users = await fastify.prisma.user.findMany({
       select: {
         id: true,
@@ -60,22 +49,11 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
         isAdmin: true,
         createdAt: true,
         updatedAt: true,
-        _count: {
-          select: {
-            collections: true,
-            embyServers: true,
-          },
-        },
       },
       orderBy: { createdAt: 'asc' },
     });
 
-    return users.map(u => ({
-      ...u,
-      collectionCount: u._count.collections,
-      embyServerCount: u._count.embyServers,
-      _count: undefined,
-    }));
+    return users;
   });
 
   // Create new user (admin only)
@@ -128,11 +106,11 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
       },
     });
 
-    fastify.log.info('User created by admin', { 
-      createdBy: request.user!.email, 
+    fastify.log.info({
+      createdBy: request.user!.email,
       newUserEmail: email,
       isAdmin,
-    });
+    }, 'User created by admin');
 
     return reply.code(201).send(user);
   });
@@ -205,7 +183,7 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
     }
 
     // Build update data
-    const updateData = {};
+    const updateData: { email?: string; passwordHash?: string; isAdmin?: boolean } = {};
     if (email) updateData.email = email;
     if (password) {
       updateData.passwordHash = await bcrypt.hash(password, 12);
@@ -226,11 +204,11 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
       },
     });
 
-    fastify.log.info('User updated', {
+    fastify.log.info({
       updatedBy: request.user!.email,
       targetUserId: id,
       changes: Object.keys(updateData),
-    });
+    }, 'User updated');
 
     return updated;
   });
@@ -277,10 +255,10 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
       where: { id },
     });
 
-    fastify.log.info('User deleted by admin', {
+    fastify.log.info({
       deletedBy: request.user!.email,
       deletedUserEmail: targetUser.email,
-    });
+    }, 'User deleted by admin');
 
     return reply.code(204).send();
   });
@@ -292,141 +270,16 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
       select: {
         id: true,
         email: true,
+        isAdmin: true,
         apiKey: true,
         createdAt: true,
-        _count: {
-          select: {
-            collections: true,
-            embyServers: true,
-          },
-        },
       },
     });
 
     return user;
   });
 
-  // List user's Emby servers
-  fastify.get('/emby-servers', async (request: FastifyRequest) => {
-    const servers = await fastify.prisma.embyServer.findMany({
-      where: { userId: request.user!.id },
-      select: {
-        id: true,
-        name: true,
-        url: true,
-        isDefault: true,
-        createdAt: true,
-      },
-    });
-
-    return servers;
-  });
-
-  // Add Emby server
-  fastify.post<{ Body: EmbyServerBody }>('/emby-servers', async (request, reply) => {
-    const { name, url, apiKey } = request.body;
-
-    if (!name || !url || !apiKey) {
-      return reply.code(400).send({
-        error: 'Bad Request',
-        message: 'name, url, and apiKey are required',
-      });
-    }
-
-    // Check if this is the first server (make it default)
-    const existingCount = await fastify.prisma.embyServer.count({
-      where: { userId: request.user!.id },
-    });
-
-    const server = await fastify.prisma.embyServer.create({
-      data: {
-        userId: request.user!.id,
-        name,
-        url: url.replace(/\/$/, ''), // Remove trailing slash
-        apiKey,
-        isDefault: existingCount === 0,
-      },
-      select: {
-        id: true,
-        name: true,
-        url: true,
-        isDefault: true,
-        createdAt: true,
-      },
-    });
-
-    return reply.code(201).send(server);
-  });
-
-  // Update Emby server
-  fastify.patch<{ Params: EmbyServerParams; Body: EmbyServerBody }>('/emby-servers/:id', async (request, reply) => {
-    const { id } = request.params;
-    const { name, url, apiKey, isDefault } = request.body;
-
-    // Verify ownership
-    const existing = await fastify.prisma.embyServer.findFirst({
-      where: { id, userId: request.user!.id },
-    });
-
-    if (!existing) {
-      return reply.code(404).send({
-        error: 'Not Found',
-        message: 'Emby server not found',
-      });
-    }
-
-    // If setting as default, unset others
-    if (isDefault) {
-      await fastify.prisma.embyServer.updateMany({
-        where: { userId: request.user!.id, id: { not: id } },
-        data: { isDefault: false },
-      });
-    }
-
-    const server = await fastify.prisma.embyServer.update({
-      where: { id },
-      data: {
-        ...(name && { name }),
-        ...(url && { url: url.replace(/\/$/, '') }),
-        ...(apiKey && { apiKey }),
-        ...(isDefault !== undefined && { isDefault }),
-      },
-      select: {
-        id: true,
-        name: true,
-        url: true,
-        isDefault: true,
-        createdAt: true,
-      },
-    });
-
-    return server;
-  });
-
-  // Delete Emby server
-  fastify.delete<{ Params: EmbyServerParams }>('/emby-servers/:id', async (request, reply) => {
-    const { id } = request.params;
-
-    // Verify ownership
-    const existing = await fastify.prisma.embyServer.findFirst({
-      where: { id, userId: request.user!.id },
-    });
-
-    if (!existing) {
-      return reply.code(404).send({
-        error: 'Not Found',
-        message: 'Emby server not found',
-      });
-    }
-
-    await fastify.prisma.embyServer.delete({
-      where: { id },
-    });
-
-    return reply.code(204).send();
-  });
-
-  // Get sync logs
+  // Get sync logs for user
   fastify.get<{ Querystring: SyncLogsQuery }>('/sync-logs', async (request) => {
     const { limit = '50', offset = '0' } = request.query;
 

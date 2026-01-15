@@ -3,17 +3,17 @@
  * Syncs all enabled collections to configured Emby servers
  */
 
-import { syncUserCollections } from '../modules/emby/sync-service.js';
+import { syncCollectionToEmby } from '../modules/emby/sync-service.js';
 import type { PrismaClient } from '@prisma/client';
 import type { FastifyBaseLogger } from 'fastify';
 
 export interface SyncAllToEmbyResult {
-  usersProcessed: number;
+  totalServers: number;
   totalCollections: number;
   totalSuccess: number;
   totalPartial: number;
   totalFailed: number;
-  errors: Array<{ userId: string; error: string }>;
+  errors: Array<{ collectionId?: string; serverId?: string; error: string }>;
 }
 
 export async function syncAllToEmby(
@@ -22,22 +22,37 @@ export async function syncAllToEmby(
 ): Promise<SyncAllToEmbyResult> {
   logger?.info('Starting Emby sync job');
 
-  const users = await prisma.user.findMany({
+  // Get all global Emby servers
+  const embyServers = await prisma.embyServer.findMany();
+
+  logger?.info(`Found ${embyServers.length} Emby servers`);
+
+  if (embyServers.length === 0) {
+    logger?.info('No Emby servers configured, skipping sync');
+    return {
+      totalServers: 0,
+      totalCollections: 0,
+      totalSuccess: 0,
+      totalPartial: 0,
+      totalFailed: 0,
+      errors: [],
+    };
+  }
+
+  // Get all enabled collections (global)
+  const collections = await prisma.collection.findMany({
     where: {
-      embyServers: {
-        some: {},
-      },
+      isEnabled: true,
     },
-    select: {
-      id: true,
-      email: true,
+    include: {
+      items: true,
     },
   });
 
-  logger?.info(`Found ${users.length} users with Emby servers`);
+  logger?.info(`Found ${collections.length} enabled collections to sync`);
 
   const results: SyncAllToEmbyResult = {
-    usersProcessed: 0,
+    totalServers: embyServers.length,
     totalCollections: 0,
     totalSuccess: 0,
     totalPartial: 0,
@@ -45,33 +60,44 @@ export async function syncAllToEmby(
     errors: [],
   };
 
-  for (const user of users) {
-    try {
-      logger?.info(`Syncing collections for user: ${user.email}`);
+  // Sync each collection to each server
+  for (const embyServer of embyServers) {
+    for (const collection of collections) {
+      try {
+        logger?.info(`Syncing collection "${collection.name}" to server "${embyServer.name}"`);
 
-      const syncResult = await syncUserCollections({
-        userId: user.id,
-        prisma,
-      });
+        const syncResult = await syncCollectionToEmby({
+          collection,
+          embyServer,
+          prisma,
+        });
 
-      results.usersProcessed++;
-
-      for (const result of syncResult.results) {
         results.totalCollections++;
-        if (result.status === 'SUCCESS') {
+        if (syncResult.status === 'SUCCESS') {
           results.totalSuccess++;
-        } else if (result.status === 'PARTIAL') {
+        } else if (syncResult.status === 'PARTIAL') {
           results.totalPartial++;
         } else {
           results.totalFailed++;
         }
+
+        // Update lastSyncAt on successful or partial sync
+        if (syncResult.status !== 'FAILED') {
+          await prisma.collection.update({
+            where: { id: collection.id },
+            data: { lastSyncAt: new Date() },
+          });
+        }
+      } catch (error) {
+        logger?.error(`Error syncing collection "${collection.name}" to server "${embyServer.name}": ${(error as Error).message}`);
+        results.totalCollections++;
+        results.totalFailed++;
+        results.errors.push({
+          collectionId: collection.id,
+          serverId: embyServer.id,
+          error: (error as Error).message,
+        });
       }
-    } catch (error) {
-      logger?.error(`Error syncing for user ${user.email}: ${(error as Error).message}`);
-      results.errors.push({
-        userId: user.id,
-        error: (error as Error).message,
-      });
     }
   }
 

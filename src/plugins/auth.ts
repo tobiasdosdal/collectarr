@@ -28,7 +28,7 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
 
     const user = await fastify.prisma.user.findUnique({
       where: { apiKey },
-      select: { id: true, email: true },
+      select: { id: true, email: true, isAdmin: true },
     });
 
     if (!user) {
@@ -44,7 +44,7 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
     if (apiKey) {
       const user = await fastify.prisma.user.findUnique({
         where: { apiKey },
-        select: { id: true, email: true },
+        select: { id: true, email: true, isAdmin: true },
       });
 
       if (user) {
@@ -55,6 +55,20 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
 
     try {
       await request.jwtVerify();
+
+      // Fetch full user from database to get isAdmin
+      const jwtPayload = request.user as { id: string; email: string };
+      const user = await fastify.prisma.user.findUnique({
+        where: { id: jwtPayload.id },
+        select: { id: true, email: true, isAdmin: true },
+      });
+
+      if (!user) {
+        reply.code(401).send({ error: 'Unauthorized', message: 'User not found' });
+        return;
+      }
+
+      request.user = user;
     } catch {
       reply.code(401).send({ error: 'Unauthorized', message: 'Authentication required' });
     }

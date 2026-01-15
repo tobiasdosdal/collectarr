@@ -4,7 +4,69 @@ import { z } from 'zod';
 import { registerSchema, loginSchema } from './schemas.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 
+const setupSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
 export default async function authRoutes(fastify: FastifyInstance): Promise<void> {
+  // Setup status - check if initial setup is needed
+  fastify.get('/setup/status', async () => {
+    const userCount = await fastify.prisma.user.count();
+    return {
+      setupRequired: userCount === 0,
+      hasAdmin: userCount > 0,
+    };
+  });
+
+  // Initial setup - create first admin user
+  fastify.post<{ Body: z.infer<typeof setupSchema> }>('/setup', async (request, reply) => {
+    // Check if setup is already done
+    const userCount = await fastify.prisma.user.count();
+    if (userCount > 0) {
+      return reply.code(400).send({
+        error: 'Bad Request',
+        message: 'Setup already completed. Use login instead.',
+      });
+    }
+
+    const validation = setupSchema.safeParse(request.body);
+    if (!validation.success) {
+      return reply.code(400).send({
+        error: 'Validation Error',
+        details: z.flattenError(validation.error).fieldErrors,
+      });
+    }
+
+    const { email, password } = validation.data;
+
+    // Create the first admin user
+    const passwordHash = await bcrypt.hash(password, 12);
+    const user = await fastify.prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+        isAdmin: true, // First user is always admin
+      },
+      select: {
+        id: true,
+        email: true,
+        isAdmin: true,
+        apiKey: true,
+        createdAt: true,
+      },
+    });
+
+    const token = fastify.jwt.sign({ id: user.id, email: user.email });
+
+    fastify.log.info({ email }, 'Initial admin user created');
+
+    return reply.code(201).send({
+      user,
+      token,
+    });
+  });
+
   fastify.post('/register', async (request: FastifyRequest, reply: FastifyReply) => {
     const validation = registerSchema.safeParse(request.body);
     if (!validation.success) {
@@ -187,9 +249,9 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     return { success: true };
   });
 
-  fastify.post('/mdblist/connect', {
+  fastify.post<{ Body: { apiKey?: string } }>('/mdblist/connect', {
     preHandler: [fastify.authenticate],
-  }, async (request: FastifyRequest<{ Body: { apiKey?: string } }>, reply: FastifyReply) => {
+  }, async (request, reply) => {
     if (!request.user?.isAdmin) {
       return reply.code(403).send({
         error: 'Forbidden',
