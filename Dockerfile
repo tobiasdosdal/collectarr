@@ -1,5 +1,5 @@
 # Build stage - Frontend
-FROM node:20-alpine AS frontend-builder
+FROM node:25-alpine AS frontend-builder
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ RUN npx vite build
 WORKDIR /app
 
 # Build stage - Backend
-FROM node:20-alpine AS backend-builder
+FROM node:25-alpine AS backend-builder
 
 WORKDIR /app
 
@@ -40,7 +40,7 @@ COPY tsconfig.json ./
 RUN npm run build:server
 
 # Production stage
-FROM node:20-alpine
+FROM node:25-alpine
 
 WORKDIR /app
 

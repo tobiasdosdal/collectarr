@@ -71,10 +71,11 @@ async function authPlugin(fastify, opts) {
     }
   });
 
-  // Require admin authentication (must be used after authenticate)
+  // Require admin authentication (use as preHandler after authenticate)
   fastify.decorate('requireAdmin', async function (request, reply) {
-    // This assumes authenticate has already been called
-    if (!request.user?.isAdmin) {
+    // This assumes authenticate has already been called as a previous preHandler
+    // Just check if user is admin
+    if (!request.user || !request.user.isAdmin) {
       return reply.code(403).send({
         error: 'Forbidden',
         message: 'Admin access required',

@@ -128,6 +128,7 @@ model RadarrServer {
   name             String
   url              String
   apiKey           String
+  apiKeyIv         String?
   isDefault        Boolean  @default(false)
   qualityProfileId Int?
   rootFolderPath   String?
@@ -146,6 +147,7 @@ model SonarrServer {
   name             String
   url              String
   apiKey           String
+  apiKeyIv         String?
   isDefault        Boolean  @default(false)
   qualityProfileId Int?
   rootFolderPath   String?

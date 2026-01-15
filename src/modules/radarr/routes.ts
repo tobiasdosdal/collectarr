@@ -5,6 +5,7 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { createRadarrClient } from './client.js';
+import { encryptApiKey, decryptApiKey } from '../../utils/api-key-crypto.js';
 
 interface ServerParams {
   id: string;
@@ -100,12 +101,22 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
       });
     }
 
+    // Encrypt API key before storage
+    const encryptedKey = encryptApiKey(apiKey);
+    if (!encryptedKey) {
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to encrypt API key',
+      });
+    }
+
     const server = await fastify.prisma.radarrServer.create({
       data: {
         userId: request.user!.id,
         name,
         url: url.replace(/\/$/, ''),
-        apiKey,
+        apiKey: encryptedKey.apiKey,
+        apiKeyIv: encryptedKey.apiKeyIv,
         isDefault: isDefault || false,
         qualityProfileId: qualityProfileId || null,
         rootFolderPath: rootFolderPath || null,
@@ -157,7 +168,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
       });
     }
 
-    const client = createRadarrClient(server.url, server.apiKey);
+    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+    const client = createRadarrClient(server.url, decryptedApiKey);
     if (!client) {
       return reply.code(500).send({
         error: 'Internal Server Error',
@@ -201,9 +213,12 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
       });
     }
 
+    // Decrypt existing API key for connection test
+    const existingApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+
     // If updating URL or API key, test connection
     if (url || apiKey) {
-      const client = createRadarrClient(url || server.url, apiKey || server.apiKey);
+      const client = createRadarrClient(url || server.url, apiKey || existingApiKey);
       if (!client) {
         return reply.code(400).send({
           error: 'Bad Request',
@@ -227,12 +242,25 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
       });
     }
 
+    // Encrypt new API key if provided
+    let apiKeyData = {};
+    if (apiKey) {
+      const encryptedKey = encryptApiKey(apiKey);
+      if (!encryptedKey) {
+        return reply.code(500).send({
+          error: 'Internal Server Error',
+          message: 'Failed to encrypt API key',
+        });
+      }
+      apiKeyData = { apiKey: encryptedKey.apiKey, apiKeyIv: encryptedKey.apiKeyIv };
+    }
+
     const updated = await fastify.prisma.radarrServer.update({
       where: { id: server.id },
       data: {
         ...(name && { name }),
         ...(url && { url: url.replace(/\/$/, '') }),
-        ...(apiKey && { apiKey }),
+        ...apiKeyData,
         ...(isDefault !== undefined && { isDefault }),
         ...(qualityProfileId !== undefined && { qualityProfileId }),
         ...(rootFolderPath !== undefined && { rootFolderPath }),
@@ -292,7 +320,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
       });
     }
 
-    const client = createRadarrClient(server.url, server.apiKey);
+    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+    const client = createRadarrClient(server.url, decryptedApiKey);
     if (!client) {
       return reply.code(500).send({
         error: 'Internal Server Error',
@@ -325,7 +354,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
       });
     }
 
-    const client = createRadarrClient(server.url, server.apiKey);
+    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+    const client = createRadarrClient(server.url, decryptedApiKey);
     if (!client) {
       return reply.code(500).send({
         error: 'Internal Server Error',
@@ -360,7 +390,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
       });
     }
 
-    const client = createRadarrClient(server.url, server.apiKey);
+    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+    const client = createRadarrClient(server.url, decryptedApiKey);
     if (!client) {
       return reply.code(500).send({
         error: 'Internal Server Error',
@@ -423,7 +454,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
       });
     }
 
-    const client = createRadarrClient(server.url, server.apiKey);
+    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+    const client = createRadarrClient(server.url, decryptedApiKey);
     if (!client) {
       return reply.code(500).send({
         error: 'Internal Server Error',
@@ -495,7 +527,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
       });
     }
 
-    const client = createRadarrClient(server.url, server.apiKey);
+    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+    const client = createRadarrClient(server.url, decryptedApiKey);
     if (!client) {
       return reply.code(500).send({
         error: 'Internal Server Error',
@@ -532,7 +565,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
       });
     }
 
-    const client = createRadarrClient(server.url, server.apiKey);
+    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+    const client = createRadarrClient(server.url, decryptedApiKey);
     if (!client) {
       return reply.code(500).send({
         error: 'Internal Server Error',

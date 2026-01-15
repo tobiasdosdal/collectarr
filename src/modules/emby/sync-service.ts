@@ -5,6 +5,7 @@
 
 import { createEmbyClient } from './client.js';
 import { readFile, readdir } from 'fs/promises';
+import { decryptApiKey } from '../../utils/api-key-crypto.js';
 import type { PrismaClient, Collection, CollectionItem, EmbyServer } from '@prisma/client';
 
 interface CollectionWithItems extends Collection {
@@ -58,7 +59,8 @@ export async function syncCollectionToEmby({
   embyServer: EmbyServer;
   prisma: PrismaClient;
 }): Promise<SyncResult> {
-  const client = createEmbyClient(embyServer.url, embyServer.apiKey);
+  const decryptedApiKey = decryptApiKey(embyServer.apiKey, embyServer.apiKeyIv);
+  const client = createEmbyClient(embyServer.url, decryptedApiKey);
 
   if (!client) {
     throw new Error('Failed to create Emby client');
@@ -297,7 +299,8 @@ export async function removeCollectionFromEmby({
   collectionName: string;
   embyServer: EmbyServer;
 }): Promise<{ success: boolean; message: string }> {
-  const client = createEmbyClient(embyServer.url, embyServer.apiKey);
+  const decryptedApiKey = decryptApiKey(embyServer.apiKey, embyServer.apiKeyIv);
+  const client = createEmbyClient(embyServer.url, decryptedApiKey);
 
   if (!client) {
     return { success: false, message: 'Failed to create Emby client' };

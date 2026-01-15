@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { registerSchema, loginSchema } from './schemas.js';
+import { generateStateToken, verifyStateToken } from '../../utils/oauth-state.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 
 interface TraktCallbackQuery {
@@ -167,22 +168,33 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       });
     }
 
+    const stateToken = generateStateToken(request.user!.id);
+
     const authUrl = new URL('https://trakt.tv/oauth/authorize');
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('client_id', trakt.clientId);
     authUrl.searchParams.set('redirect_uri', trakt.redirectUri);
-    authUrl.searchParams.set('state', request.user!.id);
+    authUrl.searchParams.set('state', stateToken);
 
     return { authUrl: authUrl.toString() };
   });
 
   fastify.get<{ Querystring: TraktCallbackQuery }>('/trakt/callback', async (request, reply) => {
-    const { code, state: userId } = request.query;
+    const { code, state } = request.query;
 
-    if (!code || !userId) {
+    if (!code || !state) {
       return reply.code(400).send({
         error: 'Bad Request',
         message: 'Missing code or state parameter',
+      });
+    }
+
+    // Verify state token to prevent CSRF attacks
+    const userId = verifyStateToken(state);
+    if (!userId) {
+      return reply.code(400).send({
+        error: 'Bad Request',
+        message: 'Invalid or expired state token',
       });
     }
 

@@ -3,13 +3,15 @@ import crypto from 'crypto';
 const ALGORITHM = 'aes-256-cbc';
 const IV_LENGTH = 16;
 
-if (!process.env.ENCRYPTION_KEY) {
-  console.warn('ENCRYPTION_KEY not set - using development key');
-}
-
 const getKey = (): Buffer => {
-  const key = process.env.ENCRYPTION_KEY || 'dev-encryption-key-change-in-production-32bytes!';
-  return Buffer.from(key.padEnd(32, '0').substring(0, 32), 'utf8');
+  const key = process.env.ENCRYPTION_KEY;
+  if (!key) {
+    throw new Error('ENCRYPTION_KEY environment variable is required');
+  }
+  if (key.length < 32) {
+    throw new Error('ENCRYPTION_KEY must be at least 32 characters');
+  }
+  return Buffer.from(key.substring(0, 32), 'utf8');
 };
 
 export interface EncryptedData {

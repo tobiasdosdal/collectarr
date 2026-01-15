@@ -39,9 +39,19 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
   fastify.addHook('preHandler', fastify.authenticate);
 
   // Admin routes - require admin access
+  // Helper to check admin status (must be used after authenticate)
+  const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.user || !request.user.isAdmin) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        message: 'Admin access required',
+      });
+    }
+  };
+
   // List all users (admin only)
   fastify.get('/list', {
-    preHandler: [fastify.authenticate, fastify.requireAdmin],
+    preHandler: [fastify.authenticate, requireAdmin],
   }, async (request: FastifyRequest) => {
     const users = await fastify.prisma.user.findMany({
       select: {
@@ -70,7 +80,7 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
 
   // Create new user (admin only)
   fastify.post<{ Body: z.infer<typeof createUserSchema> }>('/', {
-    preHandler: [fastify.authenticate, fastify.requireAdmin],
+    preHandler: [fastify.authenticate, requireAdmin],
   }, async (request, reply) => {
     const validation = createUserSchema.safeParse(request.body);
     if (!validation.success) {
@@ -227,7 +237,7 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
 
   // Delete user (admin only, cannot delete self)
   fastify.delete<{ Params: UserParams }>('/:id', {
-    preHandler: [fastify.authenticate, fastify.requireAdmin],
+    preHandler: [fastify.authenticate, requireAdmin],
   }, async (request, reply) => {
     const { id } = request.params;
 

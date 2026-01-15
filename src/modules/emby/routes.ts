@@ -6,6 +6,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { createEmbyClient } from './client.js';
 import { syncUserCollections, removeCollectionFromEmby } from './sync-service.js';
+import { encryptApiKey, decryptApiKey } from '../../utils/api-key-crypto.js';
 
 interface ServerParams {
   id: string;
@@ -110,12 +111,22 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       });
     }
 
+    // Encrypt API key before storage
+    const encryptedKey = encryptApiKey(apiKey);
+    if (!encryptedKey) {
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to encrypt API key',
+      });
+    }
+
     const server = await fastify.prisma.embyServer.create({
       data: {
         userId: request.user!.id,
         name,
         url: url.replace(/\/$/, ''), // Remove trailing slash
-        apiKey,
+        apiKey: encryptedKey.apiKey,
+        apiKeyIv: encryptedKey.apiKeyIv,
         isDefault: isDefault || false,
       },
     });
@@ -163,8 +174,9 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       });
     }
 
-    // Get server info
-    const client = createEmbyClient(server.url, server.apiKey);
+    // Decrypt API key and get server info
+    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+    const client = createEmbyClient(server.url, decryptedApiKey);
     if (!client) {
       return reply.code(500).send({
         error: 'Internal Server Error',
@@ -206,9 +218,12 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       });
     }
 
+    // Decrypt existing API key for connection test
+    const existingApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+
     // If updating URL or API key, test connection
     if (url || apiKey) {
-      const client = createEmbyClient(url || server.url, apiKey || server.apiKey);
+      const client = createEmbyClient(url || server.url, apiKey || existingApiKey);
       if (!client) {
         return reply.code(400).send({
           error: 'Bad Request',
@@ -232,12 +247,25 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       });
     }
 
+    // Encrypt new API key if provided
+    let apiKeyData = {};
+    if (apiKey) {
+      const encryptedKey = encryptApiKey(apiKey);
+      if (!encryptedKey) {
+        return reply.code(500).send({
+          error: 'Internal Server Error',
+          message: 'Failed to encrypt API key',
+        });
+      }
+      apiKeyData = { apiKey: encryptedKey.apiKey, apiKeyIv: encryptedKey.apiKeyIv };
+    }
+
     const updated = await fastify.prisma.embyServer.update({
       where: { id: server.id },
       data: {
         ...(name && { name }),
         ...(url && { url: url.replace(/\/$/, '') }),
-        ...(apiKey && { apiKey }),
+        ...apiKeyData,
         ...(isDefault !== undefined && { isDefault }),
       },
     });
@@ -293,7 +321,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       });
     }
 
-    const client = createEmbyClient(server.url, server.apiKey);
+    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+    const client = createEmbyClient(server.url, decryptedApiKey);
     if (!client) {
       return reply.code(500).send({
         error: 'Internal Server Error',
@@ -328,7 +357,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       });
     }
 
-    const client = createEmbyClient(server.url, server.apiKey);
+    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+    const client = createEmbyClient(server.url, decryptedApiKey);
     if (!client) {
       return reply.code(500).send({
         error: 'Internal Server Error',
@@ -503,7 +533,8 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
         });
       }
 
-      const client = createEmbyClient(server.url, server.apiKey);
+      const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
+    const client = createEmbyClient(server.url, decryptedApiKey);
       if (!client) {
         return reply.code(500).send({
           error: 'Internal Server Error',

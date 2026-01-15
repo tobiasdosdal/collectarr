@@ -7,11 +7,15 @@ export const config: AppConfig = {
     env: process.env.NODE_ENV || 'development',
   },
   jwt: {
-    secret: process.env.JWT_SECRET || (() => {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('JWT_SECRET environment variable must be set in production');
+    secret: (() => {
+      const secret = process.env.JWT_SECRET;
+      if (!secret) {
+        throw new Error('JWT_SECRET environment variable is required');
       }
-      return 'dev-secret-do-not-use-in-production';
+      if (secret.length < 32) {
+        throw new Error('JWT_SECRET must be at least 32 characters');
+      }
+      return secret;
     })(),
     expiresIn: '7d',
   },
