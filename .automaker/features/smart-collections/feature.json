@@ -1,0 +1,12 @@
+{
+  "id": "smart-collections",
+  "category": "Core",
+  "title": "Smart Collections with Dynamic Rules",
+  "description": "Create collections with dynamic rules (genre, rating threshold, release year range, actor/director) that automatically update. Items matching rules are automatically added/removed during refresh. Provides self-maintaining collections based on criteria.",
+  "status": "backlog",
+  "priority": 3,
+  "complexity": "complex",
+  "dependencies": [],
+  "createdAt": "2026-01-14T22:02:23.977Z",
+  "updatedAt": "2026-01-14T22:02:23.977Z"
+}

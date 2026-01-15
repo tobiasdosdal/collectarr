@@ -1,0 +1,14 @@
+{
+  "id": "plex-support",
+  "category": "Integration",
+  "title": "Plex Media Server Support",
+  "description": "Extend sync service to support Plex servers in addition to Emby. Includes Plex authentication, library browsing, and collection sync using Plex API. Allows users with Plex servers to benefit from ACDB.",
+  "status": "backlog",
+  "priority": 3,
+  "complexity": "complex",
+  "dependencies": [
+    "sync-retry-mechanism"
+  ],
+  "createdAt": "2026-01-14T22:02:23.978Z",
+  "updatedAt": "2026-01-14T22:02:23.978Z"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "webhook-notifications",
+  "category": "Integration",
+  "title": "Webhook Notifications",
+  "description": "Send webhook notifications to external services (Discord, Slack, custom endpoints) on sync events. Configurable per-user with templates for success, failure, and partial sync messages. Enables integration with home automation and notification systems.",
+  "status": "backlog",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [],
+  "createdAt": "2026-01-14T22:02:23.974Z",
+  "updatedAt": "2026-01-14T22:02:23.974Z"
+}

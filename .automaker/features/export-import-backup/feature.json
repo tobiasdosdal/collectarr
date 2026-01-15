@@ -1,0 +1,12 @@
+{
+  "id": "export-import-backup",
+  "category": "Core",
+  "title": "Full Database Backup and Restore",
+  "description": "Export entire user database to JSON format including collections, servers, and settings. Import functionality to restore from backup file. Enables migration between instances and disaster recovery.",
+  "status": "backlog",
+  "priority": 3,
+  "complexity": "simple",
+  "dependencies": [],
+  "createdAt": "2026-01-14T22:02:23.979Z",
+  "updatedAt": "2026-01-14T22:02:23.979Z"
+}

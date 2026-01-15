@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project_specification>
+  <project_name>Collectarr (Automated Collections Database for Emby)</project_name>
+
+  <overview>
+    Collectarr is a comprehensive collection management tool for Emby media servers. It enables users to create, manage, and synchronize media collections from external sources (MDBList and Trakt) directly to their Emby servers. The application provides a web-based dashboard for browsing popular movie/TV lists, creating custom collections, tracking which items exist in the user&apos;s Emby library, and automatically syncing collections with Emby&apos;s built-in collection feature. The system supports multiple Emby servers per user, automatic periodic synchronization, and provides detailed sync logging and statistics. Users can import collections from MDBList lists, Trakt watchlists, Trakt personal lists, and Trakt collections, or create manual collections. The tool matches items across providers using IMDb, TMDb, TVDB, and Trakt IDs for accurate library matching.
+  </overview>
+
+  <technology_stack>
+    <technology>Node.js (ES Modules)</technology>
+    <technology>Fastify 5.x (Web Framework)</technology>
+    <technology>Prisma ORM with SQLite</technology>
+    <technology>React 19.x (Frontend)</technology>
+    <technology>Vite 7.x (Build Tool)</technology>
+    <technology>React Router 7.x (Client-side Routing)</technology>
+    <technology>TanStack React Query (Data Fetching)</technology>
+    <technology>Lucide React (Icons)</technology>
+    <technology>Zod (Schema Validation)</technology>
+    <technology>node-cron (Job Scheduling)</technology>
+    <technology>bcrypt (Password Hashing)</technology>
+    <technology>@fastify/jwt (JWT Authentication)</technology>
+    <technology>@fastify/cors (CORS)</technology>
+    <technology>@fastify/helmet (Security Headers)</technology>
+    <technology>@fastify/rate-limit (Rate Limiting)</technology>
+    <technology>@fastify/static (Static File Serving)</technology>
+    <technology>@fastify/multipart (File Uploads)</technology>
+    <technology>Jest (Testing)</technology>
+    <technology>pino-pretty (Logging)</technology>
+    <technology>ESLint (Linting)</technology>
+  </technology_stack>
+
+  <core_capabilities>
+    <capability>Multi-source collection import from MDBList lists, Trakt watchlists, Trakt personal lists, and Trakt collections</capability>
+    <capability>Manual collection creation with custom items</capability>
+    <capability>Multi-provider ID matching (IMDb, TMDb, TVDB, Trakt) for accurate Emby library matching</capability>
+    <capability>Multiple Emby server support per user with direct API integration</capability>
+    <capability>Automatic collection synchronization with configurable intervals (1-168 hours)</capability>
+    <capability>Collection poster upload and management with automatic sync to Emby</capability>
+    <capability>Library presence tracking showing which collection items exist in Emby</capability>
+    <capability>OAuth-based Trakt authentication and API key-based MDBList integration</capability>
+    <capability>Background job scheduling for automatic collection refresh and sync</capability>
+    <capability>Detailed sync logging with success/partial/failed status tracking</capability>
+    <capability>Collection statistics showing library coverage percentage</capability>
+    <capability>User authentication with JWT and API key support for external integrations</capability>
+    <capability>Responsive React-based web dashboard with dark theme</capability>
+  </core_capabilities>
+
+  <implemented_features>
+    <feature>
+      <name>User Authentication System</name>
+      <description>Complete user registration, login, and session management using JWT tokens. Includes password hashing with bcrypt, API key generation for external integrations, and token-based authentication middleware.</description>
+      <file_locations>
+        <location>src/modules/auth/routes.js</location>
+        <location>src/modules/auth/schemas.js</location>
+        <location>src/plugins/auth.js</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Collection Management</name>
+      <description>Full CRUD operations for collections including creation from external sources (MDBList, Trakt) or manual creation. Supports collection metadata, custom posters, sync intervals, and enable/disable functionality.</description>
+      <file_locations>
+        <location>src/modules/collections/routes.js</location>
+        <location>prisma/schema.prisma</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>MDBList Integration</name>
+      <description>Search and browse MDBList lists, view list details and items, import lists as collections. Supports both user API keys and global fallback key. Fetches enriched item data including posters, ratings, and multiple provider IDs.</description>
+      <file_locations>
+        <location>src/modules/external/mdblist/routes.js</location>
+        <location>src/modules/external/mdblist/client.js</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Trakt Integration</name>
+      <description>OAuth-based authentication with Trakt. Browse personal lists, watchlist, and collection. Search trending movies/shows and popular lists. Token management with refresh capability.</description>
+      <file_locations>
+        <location>src/modules/external/trakt/routes.js</location>
+        <location>src/modules/external/trakt/client.js</location>
+        <location>src/utils/trakt-auth.js</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Emby Server Management</name>
+      <description>Add, configure, and manage multiple Emby servers. Connection testing, library browsing, and collection viewing on servers. Secure API key storage.</description>
+      <file_locations>
+        <location>src/modules/emby/routes.js</location>
+        <location>src/modules/emby/client.js</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Emby Sync Service</name>
+      <description>Synchronize collections to Emby servers by matching items via provider IDs (IMDb, TMDb, TVDB) or title/year fallback. Creates or updates Emby collections, adds matched items, syncs collection posters, and logs all sync operations.</description>
+      <file_locations>
+        <location>src/modules/emby/sync-service.js</location>
+        <location>src/modules/emby/client.js</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Background Job Scheduler</name>
+      <description>Cron-based job scheduling for automatic collection refresh and Emby sync. Supports manual job triggering, enable/disable jobs, and job status monitoring.</description>
+      <file_locations>
+        <location>src/jobs/scheduler.js</location>
+        <location>src/jobs/refresh-collections.js</location>
+        <location>src/jobs/sync-to-emby.js</location>
+        <location>src/plugins/jobs.js</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Sync Logging</name>
+      <description>Detailed logging of all sync operations with status (SUCCESS/PARTIAL/FAILED), item counts, error messages, and timestamps. Queryable sync history per user, collection, or server.</description>
+      <file_locations>
+        <location>src/modules/emby/sync-service.js</location>
+        <location>src/modules/sync/routes.js</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Image Caching and Serving</name>
+      <description>Proxy and cache images from external sources (TMDb). Collection poster upload with JPEG, PNG, and WebP support.</description>
+      <file_locations>
+        <location>src/modules/images/routes.js</location>
+        <location>src/utils/image-cache.js</location>
+        <location>src/modules/collections/routes.js</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>React Dashboard</name>
+      <description>Responsive web interface with pages for Dashboard, Collections, Collection Detail, Browse Sources, and Settings. Includes authentication flows, modals, and real-time sync status display.</description>
+      <file_locations>
+        <location>client/src/App.jsx</location>
+        <location>client/src/pages/Dashboard.jsx</location>
+        <location>client/src/pages/Collections.jsx</location>
+        <location>client/src/pages/CollectionDetail.jsx</location>
+        <location>client/src/pages/Browse.jsx</location>
+        <location>client/src/pages/Settings.jsx</location>
+      </file_locations>
+    </feature>
+    <feature>
+      <name>Rate Limiting and Security</name>
+      <description>Request rate limiting per IP, security headers via Helmet, CORS configuration, and request logging.</description>
+      <file_locations>
+        <location>src/plugins/rate-limit.js</location>
+        <location>src/app.js</location>
+      </file_locations>
+    </feature>
+  </implemented_features>
+
+  <additional_requirements>
+    <requirement>Node.js 18+ (ES Modules support required)</requirement>
+    <requirement>SQLite database (configured via DATABASE_URL environment variable)</requirement>
+    <requirement>JWT_SECRET environment variable required in production</requirement>
+    <requirement>Optional: MDBLIST_API_KEY for global MDBList access</requirement>
+    <requirement>Optional: TRAKT_CLIENT_ID and TRAKT_CLIENT_SECRET for Trakt OAuth</requirement>
+    <requirement>Optional: TMDB_API_KEY for image proxying</requirement>
+    <requirement>Emby server with API key access for sync functionality</requirement>
+  </additional_requirements>
+
+  <development_guidelines>
+    <guideline>Use ES Modules (import/export) syntax throughout the codebase</guideline>
+    <guideline>Follow Fastify plugin architecture for modular code organization</guideline>
+    <guideline>Use Zod for request/response schema validation</guideline>
+    <guideline>Implement proper error handling with descriptive error messages</guideline>
+    <guideline>Use Prisma for all database operations with proper relations</guideline>
+    <guideline>Follow React hooks patterns and functional components</guideline>
+    <guideline>Use TanStack Query for server state management in frontend</guideline>
+    <guideline>Implement proper authentication checks via preHandler hooks</guideline>
+    <guideline>Log errors with appropriate context using Fastify logger</guideline>
+    <guideline>Handle network errors gracefully with user-friendly messages</guideline>
+    <guideline>Use environment variables for all configuration values</guideline>
+    <guideline>Test connection before saving Emby server configurations</guideline>
+  </development_guidelines>
+
+  <implementation_roadmap>
+    <phase>
+      <name>Core Backend Infrastructure</name>
+      <status>completed</status>
+      <description>Fastify server setup, Prisma database schema, authentication system, and plugin architecture</description>
+    </phase>
+    <phase>
+      <name>External Source Integration</name>
+      <status>completed</status>
+      <description>MDBList and Trakt API clients with OAuth and API key authentication</description>
+    </phase>
+    <phase>
+      <name>Collection Management</name>
+      <status>completed</status>
+      <description>Full CRUD for collections, items, posters, and statistics</description>
+    </phase>
+    <phase>
+      <name>Emby Integration</name>
+      <status>completed</status>
+      <description>Emby server management, library matching, collection sync, and poster sync</description>
+    </phase>
+    <phase>
+      <name>Background Jobs</name>
+      <status>completed</status>
+      <description>Job scheduler for automatic collection refresh and Emby sync</description>
+    </phase>
+    <phase>
+      <name>React Frontend</name>
+      <status>completed</status>
+      <description>Dashboard, collection views, source browsers, settings, and authentication UI</description>
+    </phase>
+    <phase>
+      <name>Production Optimization</name>
+      <status>pending</status>
+      <description>Performance tuning, caching improvements, Docker containerization, and deployment documentation</description>
+    </phase>
+  </implementation_roadmap>
+</project_specification>

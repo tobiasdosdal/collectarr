@@ -1,0 +1,14 @@
+{
+  "id": "collection-search-filter",
+  "category": "UI",
+  "title": "Collection Search and Filtering",
+  "description": "Add search bar and filters to collections page for finding collections by name, source type, sync status, or enabled state. Includes real-time search with debouncing and multi-select filter dropdowns. Improves usability when managing many collections.",
+  "status": "in_progress",
+  "priority": 1,
+  "complexity": "simple",
+  "dependencies": [],
+  "createdAt": "2026-01-14T22:02:23.972Z",
+  "updatedAt": "2026-01-14T22:22:07.343Z",
+  "startedAt": "2026-01-14T22:22:07.201Z",
+  "descriptionHistory": []
+}

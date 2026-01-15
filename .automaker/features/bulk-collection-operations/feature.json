@@ -1,0 +1,12 @@
+{
+  "id": "bulk-collection-operations",
+  "category": "Core",
+  "title": "Bulk Collection Operations",
+  "description": "Enable bulk actions on multiple collections: bulk enable/disable, bulk delete, bulk sync, and bulk refresh. Provides checkboxes in the collections list UI and a batch operations toolbar. Significantly improves management of large numbers of collections.",
+  "status": "backlog",
+  "priority": 1,
+  "complexity": "moderate",
+  "dependencies": [],
+  "createdAt": "2026-01-14T22:02:23.971Z",
+  "updatedAt": "2026-01-14T22:02:23.971Z"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "emby-library-filter",
+  "category": "Core",
+  "title": "Emby Library Filtering",
+  "description": "Allow users to specify which Emby libraries to sync collections to per server. Adds library selection UI in server settings and filters sync operations to only selected libraries. Prevents collections from appearing in unwanted libraries.",
+  "status": "backlog",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [],
+  "createdAt": "2026-01-14T22:02:23.972Z",
+  "updatedAt": "2026-01-14T22:02:23.972Z"
+}

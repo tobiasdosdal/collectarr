@@ -1,0 +1,56 @@
+# Dependencies
+node_modules
+client/node_modules
+
+# Build outputs
+dist
+client/dist
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Database files
+*.db
+*.db-journal
+data/
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Docker files (not needed in context)
+Dockerfile*
+docker-compose*
+
+# Documentation
+README.md
+*.md
+!prisma/*.md
+
+# Testing
+coverage
+*.test.ts
+*.spec.ts
+tests
+jest.config.js
+playwright.config.js
+
+# Logs
+*.log
+npm-debug.log*
+logs
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc
+.automaker

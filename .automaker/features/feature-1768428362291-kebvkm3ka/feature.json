@@ -1,0 +1,30 @@
+{
+  "category": "Uncategorized",
+  "description": "Convert UI to Match *arr Project Standards (Sonarr/Radarr Style)\n\nRedesign the application UI to follow the established design patterns and conventions used by Sonarr, Radarr, Lidarr, and other *arr project family members.\n\nTechnical Implementation:\n- UI Framework: React with TypeScript, styled-components or CSS modules\n- Layout: Sidebar navigation with collapsible sections, top search bar, settings icon\n- Theme System: Dark/light theme toggle with *arr-style color palette\n  - Dark: #1f1f1f background, #282828 cards, #007bff accent\n  - Light: #f5f5f5 background, #ffffff cards, #007bff accent\n- Component Library: Match *arr design system components\n\nCore Components to Implement:\n- SidebarNav (dashboard, library, calendar, activity, settings)\n- PageHeader (breadcrumbs, actions, search)\n- TableView (sortable columns, inline actions, mass selection)\n- CardGrid (poster view with hover actions)\n- ModalDialog (*arr-style modals with consistent styling)\n- Toast Notifications (top-right position, auto-dismiss)\n- LoadingSpinner (*arr animated loader)\n\nKey Pages to Redesign:\n- Dashboard (activity cards, upcoming items, system status)\n- Library View (table/card toggle, bulk operations, filtering)\n- Calendar View (weekly/monthly views with color coding)\n- Activity/Queue (progress bars, status indicators)\n- Settings (tabbed navigation, save/test buttons)\n\nState Management:\n- Use Redux or Zustand for global state\n- Persist theme preference and view settings to localStorage\n\nAPI Integration:\n- RESTful endpoints matching *arr conventions\n- Polling for activity updates (5-second intervals)\n- WebSocket support for real-time queue updates\n\nPerformance:\n- Virtual scrolling for large libraries (react-window)\n- Image lazy loading with placeholder cards\n- Debounced search (300ms)\n\nResponsive Design:\n- Mobile-first approach with hamburger menu\n- Breakpoints: mobile (<768px), tablet (768-1024px), desktop (>1024px)\n\nIcons & Assets:\n- Use Font Awesome or similar icon library matching *arr projects\n- Consistent icon usage across actions (download, edit, delete, refresh)",
+  "title": "Redesign UI to match *arr project standards",
+  "images": [],
+  "imagePaths": [],
+  "textFilePaths": [],
+  "skipTests": true,
+  "model": "haiku",
+  "thinkingLevel": "none",
+  "reasoningEffort": "none",
+  "priority": 2,
+  "planningMode": "full",
+  "requirePlanApproval": true,
+  "dependencies": [],
+  "workMode": "current",
+  "titleGenerating": false,
+  "status": "verified",
+  "id": "feature-1768428362291-kebvkm3ka",
+  "descriptionHistory": [
+    {
+      "description": "Convert UI to Match *arr Project Standards (Sonarr/Radarr Style)\n\nRedesign the application UI to follow the established design patterns and conventions used by Sonarr, Radarr, Lidarr, and other *arr project family members.\n\nTechnical Implementation:\n- UI Framework: React with TypeScript, styled-components or CSS modules\n- Layout: Sidebar navigation with collapsible sections, top search bar, settings icon\n- Theme System: Dark/light theme toggle with *arr-style color palette\n  - Dark: #1f1f1f background, #282828 cards, #007bff accent\n  - Light: #f5f5f5 background, #ffffff cards, #007bff accent\n- Component Library: Match *arr design system components\n\nCore Components to Implement:\n- SidebarNav (dashboard, library, calendar, activity, settings)\n- PageHeader (breadcrumbs, actions, search)\n- TableView (sortable columns, inline actions, mass selection)\n- CardGrid (poster view with hover actions)\n- ModalDialog (*arr-style modals with consistent styling)\n- Toast Notifications (top-right position, auto-dismiss)\n- LoadingSpinner (*arr animated loader)\n\nKey Pages to Redesign:\n- Dashboard (activity cards, upcoming items, system status)\n- Library View (table/card toggle, bulk operations, filtering)\n- Calendar View (weekly/monthly views with color coding)\n- Activity/Queue (progress bars, status indicators)\n- Settings (tabbed navigation, save/test buttons)\n\nState Management:\n- Use Redux or Zustand for global state\n- Persist theme preference and view settings to localStorage\n\nAPI Integration:\n- RESTful endpoints matching *arr conventions\n- Polling for activity updates (5-second intervals)\n- WebSocket support for real-time queue updates\n\nPerformance:\n- Virtual scrolling for large libraries (react-window)\n- Image lazy loading with placeholder cards\n- Debounced search (300ms)\n\nResponsive Design:\n- Mobile-first approach with hamburger menu\n- Breakpoints: mobile (<768px), tablet (768-1024px), desktop (>1024px)\n\nIcons & Assets:\n- Use Font Awesome or similar icon library matching *arr projects\n- Consistent icon usage across actions (download, edit, delete, refresh)",
+      "timestamp": "2026-01-14T22:06:02.377Z",
+      "source": "initial"
+    }
+  ],
+  "startedAt": "2026-01-14T22:07:07.728Z",
+  "updatedAt": "2026-01-14T22:09:05.209Z",
+  "justFinishedAt": "2026-01-14T22:09:05.209Z"
+}

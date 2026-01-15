@@ -1,0 +1,12 @@
+{
+  "id": "statistics-dashboard",
+  "category": "UI",
+  "title": "Enhanced Statistics Dashboard",
+  "description": "Comprehensive statistics page with charts for library coverage over time, sync success rates, most popular collections, and item distribution. Uses Chart.js or similar for data visualization. Provides insights into collection management patterns.",
+  "status": "backlog",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [],
+  "createdAt": "2026-01-14T22:02:23.975Z",
+  "updatedAt": "2026-01-14T22:02:23.975Z"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "api-documentation",
+  "category": "Documentation",
+  "title": "Interactive API Documentation",
+  "description": "Generate Swagger/OpenAPI documentation from Zod schemas with interactive testing interface. Includes authentication examples and rate limit information. Enables third-party integrations and external tool development.",
+  "status": "backlog",
+  "priority": 3,
+  "complexity": "simple",
+  "dependencies": [],
+  "createdAt": "2026-01-14T22:02:23.979Z",
+  "updatedAt": "2026-01-14T22:02:23.979Z"
+}

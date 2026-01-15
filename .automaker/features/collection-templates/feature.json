@@ -1,0 +1,12 @@
+{
+  "id": "collection-templates",
+  "category": "Core",
+  "title": "Collection Templates",
+  "description": "Pre-defined collection templates for common use cases (Top IMDb 250, Oscar Winners, Popular Netflix Shows, etc.). Users can create collections from templates with one click. Includes template metadata, default posters, and pre-configured sync intervals.",
+  "status": "backlog",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [],
+  "createdAt": "2026-01-14T22:02:23.973Z",
+  "updatedAt": "2026-01-14T22:02:23.973Z"
+}

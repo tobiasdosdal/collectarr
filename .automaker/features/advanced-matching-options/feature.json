@@ -1,0 +1,12 @@
+{
+  "id": "advanced-matching-options",
+  "category": "Core",
+  "title": "Advanced Item Matching Options",
+  "description": "Configurable matching strategies per collection: strict ID matching only, fuzzy title matching, or hybrid approach. Adds matching threshold configuration and manual match overrides. Improves matching accuracy for edge cases and foreign titles.",
+  "status": "backlog",
+  "priority": 2,
+  "complexity": "complex",
+  "dependencies": [],
+  "createdAt": "2026-01-14T22:02:23.973Z",
+  "updatedAt": "2026-01-14T22:02:23.973Z"
+}

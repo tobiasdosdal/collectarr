@@ -1,0 +1,40 @@
+{
+  "category": "Uncategorized",
+  "description": "Fix Image Caching System\n\nResolve issues with image caching to ensure proper storage, retrieval, and invalidation of cached images.\n\nRequirements:\n- Identify current caching failures (images not caching, stale cache, or excessive cache usage)\n- Implement or fix cache-control headers for image requests\n- Set appropriate cache expiration policies based on image types\n- Handle cache invalidation when images are updated\n- Optimize cache storage to prevent excessive disk/memory usage\n- Test image loading behavior for first visit, subsequent visits, and after updates\n- Ensure cached images display correctly across different browsers\n- Handle edge cases: network failures, corrupted cache entries, and cache quota exceeded",
+  "title": "Fix image caching and invalidation",
+  "images": [],
+  "imagePaths": [],
+  "textFilePaths": [],
+  "skipTests": true,
+  "model": "sonnet",
+  "thinkingLevel": "medium",
+  "reasoningEffort": "none",
+  "priority": 2,
+  "planningMode": "lite",
+  "requirePlanApproval": true,
+  "dependencies": [],
+  "workMode": "current",
+  "titleGenerating": false,
+  "status": "waiting_approval",
+  "id": "feature-1768428268436-ti0sb557h",
+  "descriptionHistory": [
+    {
+      "description": "Fix Image Caching System\n\nResolve issues with image caching to ensure proper storage, retrieval, and invalidation of cached images.\n\nRequirements:\n- Identify current caching failures (images not caching, stale cache, or excessive cache usage)\n- Implement or fix cache-control headers for image requests\n- Set appropriate cache expiration policies based on image types\n- Handle cache invalidation when images are updated\n- Optimize cache storage to prevent excessive disk/memory usage\n- Test image loading behavior for first visit, subsequent visits, and after updates\n- Ensure cached images display correctly across different browsers\n- Handle edge cases: network failures, corrupted cache entries, and cache quota exceeded",
+      "timestamp": "2026-01-14T22:04:28.517Z",
+      "source": "initial"
+    }
+  ],
+  "startedAt": "2026-01-14T22:04:39.968Z",
+  "updatedAt": "2026-01-14T22:10:34.308Z",
+  "planSpec": {
+    "status": "approved",
+    "version": 1,
+    "reviewedByUser": true,
+    "generatedAt": "2026-01-14T22:05:25.602Z",
+    "tasks": [],
+    "tasksTotal": 0,
+    "tasksCompleted": 0,
+    "approvedAt": "2026-01-14T22:05:30.136Z"
+  },
+  "justFinishedAt": "2026-01-14T22:10:34.308Z"
+}

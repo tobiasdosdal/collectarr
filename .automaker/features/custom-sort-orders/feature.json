@@ -1,0 +1,12 @@
+{
+  "id": "custom-sort-orders",
+  "category": "Core",
+  "title": "Custom Collection Sort Orders",
+  "description": "Define custom sort order for items within collections (release date, rating, alphabetical, manual drag-drop). Syncs sort order to Emby collection display. Allows users to control presentation of collections on Emby clients.",
+  "status": "backlog",
+  "priority": 2,
+  "complexity": "moderate",
+  "dependencies": [],
+  "createdAt": "2026-01-14T22:02:23.976Z",
+  "updatedAt": "2026-01-14T22:02:23.976Z"
+}
