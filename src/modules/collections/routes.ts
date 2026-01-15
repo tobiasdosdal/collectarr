@@ -38,10 +38,6 @@ interface AddItemBody {
   tvdbId?: string;
 }
 
-interface PosterUploadBody {
-  file: NodeJS.ReadableStream;
-}
-
 // Types for helper functions
 interface RefreshedItem {
   mediaType: string;
@@ -89,13 +85,22 @@ interface TraktItem {
   show?: { title: string; year: number; ids: { imdb: string; tmdb: number; trakt: number; tvdb: number }; rating?: number; votes?: number };
 }
 
+// Helper to check admin status for write operations
+const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
+  if (!request.user || !request.user.isAdmin) {
+    return reply.code(403).send({
+      error: 'Forbidden',
+      message: 'Admin access required',
+    });
+  }
+};
+
 export default async function collectionsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', fastify.authenticate);
 
-  // List all collections for user
-  fastify.get('/', async (request: FastifyRequest) => {
+  // List all collections (global)
+  fastify.get('/', async () => {
     const collections = await fastify.prisma.collection.findMany({
-      where: { userId: request.user!.id },
       orderBy: { createdAt: 'desc' },
       include: {
         _count: {
@@ -122,8 +127,10 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     return collectionsWithCachedPosters;
   });
 
-  // Create collection
-  fastify.post('/', async (request, reply) => {
+  // Create collection (admin only)
+  fastify.post('/', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const validation = createCollectionSchema.safeParse(request.body);
     if (!validation.success) {
       return reply.code(400).send({
@@ -145,7 +152,6 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     if (sourceId) {
       const existing = await fastify.prisma.collection.findFirst({
         where: {
-          userId: request.user!.id,
           sourceType,
           sourceId,
         },
@@ -161,7 +167,6 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
 
     const collection = await fastify.prisma.collection.create({
       data: {
-        userId: request.user!.id,
         name,
         description,
         sourceType,
@@ -178,8 +183,8 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
   fastify.get<{ Params: CollectionParams }>('/:id', async (request, reply) => {
     const { id } = request.params;
 
-    const collection = await fastify.prisma.collection.findFirst({
-      where: { id, userId: request.user!.id },
+    const collection = await fastify.prisma.collection.findUnique({
+      where: { id },
       include: {
         items: {
           orderBy: { addedAt: 'desc' },
@@ -222,8 +227,10 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     };
   });
 
-  // Update collection
-  fastify.patch<{ Params: CollectionParams }>('/:id', async (request, reply) => {
+  // Update collection (admin only)
+  fastify.patch<{ Params: CollectionParams }>('/:id', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { id } = request.params;
 
     const validation = updateCollectionSchema.safeParse(request.body);
@@ -234,8 +241,8 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       });
     }
 
-    const existing = await fastify.prisma.collection.findFirst({
-      where: { id, userId: request.user!.id },
+    const existing = await fastify.prisma.collection.findUnique({
+      where: { id },
     });
 
     if (!existing) {
@@ -253,12 +260,14 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     return collection;
   });
 
-  // Delete collection
-  fastify.delete<{ Params: CollectionParams }>('/:id', async (request, reply) => {
+  // Delete collection (admin only)
+  fastify.delete<{ Params: CollectionParams }>('/:id', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { id } = request.params;
 
-    const existing = await fastify.prisma.collection.findFirst({
-      where: { id, userId: request.user!.id },
+    const existing = await fastify.prisma.collection.findUnique({
+      where: { id },
     });
 
     if (!existing) {
@@ -279,8 +288,8 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
   fastify.post<{ Params: CollectionParams }>('/:id/refresh', async (request, reply) => {
     const { id } = request.params;
 
-    const collection = await fastify.prisma.collection.findFirst({
-      where: { id, userId: request.user!.id },
+    const collection = await fastify.prisma.collection.findUnique({
+      where: { id },
     });
 
     if (!collection) {
@@ -297,12 +306,13 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       });
     }
 
-    const user = await fastify.prisma.user.findUnique({
-      where: { id: request.user!.id },
+    // Get API keys from global Settings
+    const settings = await fastify.prisma.settings.findUnique({
+      where: { id: 'singleton' },
     });
 
     let items: RefreshedItem[] = [];
-    const mdblistApiKey = user?.mdblistApiKey || fastify.config.external.mdblist.apiKey;
+    const mdblistApiKey = settings?.mdblistApiKey || fastify.config.external.mdblist.apiKey;
 
     try {
       switch (collection.sourceType) {
@@ -312,7 +322,7 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
         case 'TRAKT_LIST':
         case 'TRAKT_WATCHLIST':
         case 'TRAKT_COLLECTION':
-          items = await refreshFromTrakt(collection, user!, fastify.config);
+          items = await refreshFromTrakt(collection, settings, fastify.config);
           break;
       }
     } catch (error) {
@@ -347,13 +357,15 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     };
   });
 
-  // Add item to manual collection
-  fastify.post<{ Params: CollectionParams; Body: AddItemBody }>('/:id/items', async (request, reply) => {
+  // Add item to manual collection (admin only)
+  fastify.post<{ Params: CollectionParams; Body: AddItemBody }>('/:id/items', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { id } = request.params;
     const { mediaType, title, year, imdbId, tmdbId, traktId, tvdbId } = request.body;
 
-    const collection = await fastify.prisma.collection.findFirst({
-      where: { id, userId: request.user!.id },
+    const collection = await fastify.prisma.collection.findUnique({
+      where: { id },
     });
 
     if (!collection) {
@@ -386,12 +398,14 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     return reply.code(201).send(item);
   });
 
-  // Remove item from collection
-  fastify.delete<{ Params: ItemParams }>('/:id/items/:itemId', async (request, reply) => {
+  // Remove item from collection (admin only)
+  fastify.delete<{ Params: ItemParams }>('/:id/items/:itemId', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { id, itemId } = request.params;
 
-    const collection = await fastify.prisma.collection.findFirst({
-      where: { id, userId: request.user!.id },
+    const collection = await fastify.prisma.collection.findUnique({
+      where: { id },
     });
 
     if (!collection) {
@@ -412,8 +426,8 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
   fastify.get<{ Params: CollectionParams }>('/:id/stats', async (request, reply) => {
     const { id } = request.params;
 
-    const collection = await fastify.prisma.collection.findFirst({
-      where: { id, userId: request.user!.id },
+    const collection = await fastify.prisma.collection.findUnique({
+      where: { id },
     });
 
     if (!collection) {
@@ -441,8 +455,8 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
   fastify.get<{ Params: CollectionParams }>('/:id/missing', async (request, reply) => {
     const { id } = request.params;
 
-    const collection = await fastify.prisma.collection.findFirst({
-      where: { id, userId: request.user!.id },
+    const collection = await fastify.prisma.collection.findUnique({
+      where: { id },
     });
 
     if (!collection) {
@@ -472,12 +486,14 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     return { items: itemsWithCachedImages, count: itemsWithCachedImages.length };
   });
 
-  // Upload collection poster
-  fastify.post<{ Params: CollectionParams }>('/:id/poster', async (request, reply) => {
+  // Upload collection poster (admin only)
+  fastify.post<{ Params: CollectionParams }>('/:id/poster', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { id } = request.params;
 
-    const collection = await fastify.prisma.collection.findFirst({
-      where: { id, userId: request.user!.id },
+    const collection = await fastify.prisma.collection.findUnique({
+      where: { id },
     });
 
     if (!collection) {
@@ -526,8 +542,8 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
   fastify.get<{ Params: CollectionParams }>('/:id/poster', async (request, reply) => {
     const { id } = request.params;
 
-    const collection = await fastify.prisma.collection.findFirst({
-      where: { id, userId: request.user!.id },
+    const collection = await fastify.prisma.collection.findUnique({
+      where: { id },
     });
 
     if (!collection || !collection.posterPath) {
@@ -561,12 +577,14 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     return reply.send(createReadStream(`uploads/posters/${posterFile}`));
   });
 
-  // Delete collection poster
-  fastify.delete<{ Params: CollectionParams }>('/:id/poster', async (request, reply) => {
+  // Delete collection poster (admin only)
+  fastify.delete<{ Params: CollectionParams }>('/:id/poster', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { id } = request.params;
 
-    const collection = await fastify.prisma.collection.findFirst({
-      where: { id, userId: request.user!.id },
+    const collection = await fastify.prisma.collection.findUnique({
+      where: { id },
     });
 
     if (!collection) {
@@ -634,7 +652,7 @@ async function refreshFromMdblist(
     console.log(`MDBList: Got ${items.length} items, fetching details...`);
 
     const enrichedItems: RefreshedItem[] = [];
-    const batchSize = 2; // Reduced to 2 to avoid TMDB rate limiting
+    const batchSize = 2;
 
     for (let i = 0; i < items.length; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
@@ -643,7 +661,6 @@ async function refreshFromMdblist(
       );
       enrichedItems.push(...batchResults);
 
-      // Add delay between batches to respect rate limits
       if (i + batchSize < items.length) {
         await new Promise(r => setTimeout(r, 500));
       }
@@ -676,7 +693,6 @@ async function fetchMdblistItemDetails(
 
   let basicPosterPath: string | null = null;
   if (item.poster) {
-    // Normalize to w500 for consistent caching
     if (item.poster.startsWith('http')) {
       basicPosterPath = item.poster.replace('/original/', '/w500/').replace('/w500/', '/w500/');
     } else {
@@ -705,7 +721,7 @@ async function fetchMdblistItemDetails(
         detailResponse = await fetch(`https://mdblist.com/api/?apikey=${apiKey}&i=${imdbId}`);
       } catch (fetchError) {
         if (fetchError instanceof TypeError && fetchError.message.includes('fetch')) {
-          console.warn(`Network error fetching details for ${imdbId}:`, fetchError.message);
+          console.warn(`Network error fetching details for ${imdbId}:`, (fetchError as Error).message);
           return result;
         }
         throw fetchError;
@@ -721,7 +737,6 @@ async function fetchMdblistItemDetails(
         result.ratingCount = detail.imdbvotes || null;
 
         if (detail.poster) {
-          // Normalize to w500 for consistent caching
           const tmdbPosterUrl = detail.poster.startsWith('http')
             ? detail.poster.replace('/original/', '/w500/').replace('/w500/', '/w500/')
             : `https://image.tmdb.org/t/p/w500${detail.poster}`;
@@ -751,7 +766,6 @@ async function fetchMdblistItemDetails(
     }
   }
 
-  // If still no poster, try searching by title on TMDB
   if (!result.posterPath && result.title) {
     const tmdbPoster = await searchTmdbByTitle(result.title, result.mediaType, result.year);
     if (tmdbPoster) {
@@ -768,7 +782,7 @@ async function fetchMdblistItemDetails(
 }
 
 let lastTmdbApiCallTime = 0;
-const TMDB_API_DELAY_MS = 300; // Minimum delay between TMDB API calls
+const TMDB_API_DELAY_MS = 300;
 
 async function waitForTmdbRateLimit(): Promise<void> {
   const now = Date.now();
@@ -795,7 +809,6 @@ async function fetchTmdbPoster(tmdbId: string, mediaType: string): Promise<strin
     if (response.ok) {
       const data = (await response.json()) as { poster_path?: string };
       if (data.poster_path) {
-        // Normalize to w500 for consistency
         return `https://image.tmdb.org/t/p/w500${data.poster_path}`;
       }
     }
@@ -828,7 +841,6 @@ async function searchTmdbByTitle(title: string, mediaType: string, year: number 
       const results = data.results;
 
       if (results && results.length > 0) {
-        // Use the first result with a poster (normalize to w500)
         for (const result of results) {
           if (result.poster_path) {
             const posterUrl = `https://image.tmdb.org/t/p/w500${result.poster_path}`;
@@ -854,18 +866,18 @@ async function searchTmdbByTitle(title: string, mediaType: string, year: number 
 
 async function refreshFromTrakt(
   collection: { sourceType: string; sourceId: string | null },
-  user: { traktAccessToken: string | null },
+  settings: { traktAccessToken: string | null } | null,
   config: AppConfig
 ): Promise<RefreshedItem[]> {
-  if (!user.traktAccessToken) {
-    throw new Error('Trakt not connected');
+  if (!settings?.traktAccessToken) {
+    throw new Error('Trakt not connected. Admin must authorize in settings.');
   }
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'trakt-api-version': '2',
     'trakt-api-key': config.external.trakt.clientId || '',
-    'Authorization': `Bearer ${user.traktAccessToken}`,
+    'Authorization': `Bearer ${settings.traktAccessToken}`,
   };
 
   let endpoint: string;

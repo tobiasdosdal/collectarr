@@ -1,6 +1,7 @@
 /**
  * Radarr Server Management Routes
  * Handles Radarr server configuration and movie requests
+ * Servers are now global (shared across all users)
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
@@ -39,16 +40,25 @@ interface LookupQuery {
   tmdbId?: string;
 }
 
+// Helper to check admin status for write operations
+const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
+  if (!request.user || !request.user.isAdmin) {
+    return reply.code(403).send({
+      error: 'Forbidden',
+      message: 'Admin access required',
+    });
+  }
+};
+
 export default async function radarrRoutes(fastify: FastifyInstance): Promise<void> {
   // All routes require authentication
   fastify.addHook('onRequest', fastify.authenticate);
 
   /**
-   * GET /radarr/servers - List user's Radarr servers
+   * GET /radarr/servers - List all Radarr servers (global)
    */
-  fastify.get('/servers', async (request: FastifyRequest) => {
+  fastify.get('/servers', async () => {
     const servers = await fastify.prisma.radarrServer.findMany({
-      where: { userId: request.user!.id },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -64,9 +74,11 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
   });
 
   /**
-   * POST /radarr/servers - Add a new Radarr server
+   * POST /radarr/servers - Add a new Radarr server (admin only)
    */
-  fastify.post<{ Body: RadarrServerBody }>('/servers', async (request, reply) => {
+  fastify.post<{ Body: RadarrServerBody }>('/servers', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { name, url, apiKey, isDefault, qualityProfileId, rootFolderPath } = request.body;
 
     if (!name || !url || !apiKey) {
@@ -96,7 +108,6 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
     // If setting as default, unset other defaults
     if (isDefault) {
       await fastify.prisma.radarrServer.updateMany({
-        where: { userId: request.user!.id },
         data: { isDefault: false },
       });
     }
@@ -112,7 +123,6 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
 
     const server = await fastify.prisma.radarrServer.create({
       data: {
-        userId: request.user!.id,
         name,
         url: url.replace(/\/$/, ''),
         apiKey: encryptedKey.apiKey,
@@ -154,11 +164,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /radarr/servers/:id - Get server details
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id', async (request, reply) => {
-    const server = await fastify.prisma.radarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.radarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -194,16 +201,15 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
   });
 
   /**
-   * PATCH /radarr/servers/:id - Update server config
+   * PATCH /radarr/servers/:id - Update server config (admin only)
    */
-  fastify.patch<{ Params: ServerParams; Body: RadarrServerBody }>('/servers/:id', async (request, reply) => {
+  fastify.patch<{ Params: ServerParams; Body: RadarrServerBody }>('/servers/:id', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { name, url, apiKey, isDefault, qualityProfileId, rootFolderPath } = request.body;
 
-    const server = await fastify.prisma.radarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.radarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -237,7 +243,7 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
     // If setting as default, unset other defaults
     if (isDefault) {
       await fastify.prisma.radarrServer.updateMany({
-        where: { userId: request.user!.id, id: { not: server.id } },
+        where: { id: { not: server.id } },
         data: { isDefault: false },
       });
     }
@@ -278,14 +284,13 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
   });
 
   /**
-   * DELETE /radarr/servers/:id - Remove server
+   * DELETE /radarr/servers/:id - Remove server (admin only)
    */
-  fastify.delete<{ Params: ServerParams }>('/servers/:id', async (request, reply) => {
-    const server = await fastify.prisma.radarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+  fastify.delete<{ Params: ServerParams }>('/servers/:id', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
+    const server = await fastify.prisma.radarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -306,11 +311,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /radarr/servers/:id/profiles - Get quality profiles
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id/profiles', async (request, reply) => {
-    const server = await fastify.prisma.radarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.radarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -340,11 +342,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /radarr/servers/:id/rootfolders - Get root folders
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id/rootfolders', async (request, reply) => {
-    const server = await fastify.prisma.radarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.radarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -376,11 +375,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /radarr/servers/:id/lookup - Search for movies
    */
   fastify.get<{ Params: ServerParams; Querystring: LookupQuery }>('/servers/:id/lookup', async (request, reply) => {
-    const server = await fastify.prisma.radarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.radarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -420,11 +416,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
    * POST /radarr/servers/:id/add - Add movie to Radarr
    */
   fastify.post<{ Params: ServerParams; Body: AddMovieBody }>('/servers/:id/add', async (request, reply) => {
-    const server = await fastify.prisma.radarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.radarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -513,11 +506,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /radarr/servers/:id/movies - Get all movies in Radarr library
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id/movies', async (request, reply) => {
-    const server = await fastify.prisma.radarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.radarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -551,11 +541,8 @@ export default async function radarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /radarr/servers/:id/movies/:tmdbId - Check if movie exists in Radarr
    */
   fastify.get<{ Params: ServerParams & { tmdbId: string } }>('/servers/:id/movies/:tmdbId', async (request, reply) => {
-    const server = await fastify.prisma.radarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.radarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {

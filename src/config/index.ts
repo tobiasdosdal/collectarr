@@ -2,7 +2,7 @@ import type { AppConfig } from '../types/index.js';
 
 export const config: AppConfig = {
   server: {
-    port: parseInt(process.env.PORT || '3000', 10),
+    port: parseInt(process.env.PORT || '7795', 10),
     host: process.env.HOST || '0.0.0.0',
     env: process.env.NODE_ENV || 'development',
   },
@@ -32,7 +32,7 @@ export const config: AppConfig = {
       clientId: process.env.TRAKT_CLIENT_ID,
       clientSecret: process.env.TRAKT_CLIENT_SECRET,
       baseUrl: 'https://api.trakt.tv',
-      redirectUri: process.env.TRAKT_REDIRECT_URI || 'http://localhost:3000/api/v1/auth/trakt/callback',
+      redirectUri: process.env.TRAKT_REDIRECT_URI || 'http://localhost:7795/api/v1/auth/trakt/callback',
     },
   },
 };

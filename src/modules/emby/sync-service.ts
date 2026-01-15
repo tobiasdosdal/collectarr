@@ -1,6 +1,7 @@
 /**
  * Emby Sync Service
  * Handles syncing ACdb collections to Emby servers
+ * Collections and servers are now global (shared across all users)
  */
 
 import { createEmbyClient } from './client.js';
@@ -30,14 +31,14 @@ interface SyncResult {
   matchedItems: MatchedItem[];
 }
 
-interface SyncUserCollectionsOptions {
-  userId: string;
+interface SyncCollectionsOptions {
+  userId?: string; // Optional - for audit trail
   prisma: PrismaClient;
   collectionId?: string;
   embyServerId?: string;
 }
 
-interface SyncUserCollectionsResult {
+interface SyncCollectionsResult {
   success: boolean;
   error?: string;
   totalCollections?: number;
@@ -54,10 +55,12 @@ export async function syncCollectionToEmby({
   collection,
   embyServer,
   prisma,
+  userId,
 }: {
   collection: CollectionWithItems;
   embyServer: EmbyServer;
   prisma: PrismaClient;
+  userId?: string;
 }): Promise<SyncResult> {
   const decryptedApiKey = decryptApiKey(embyServer.apiKey, embyServer.apiKeyIv);
   const client = createEmbyClient(embyServer.url, decryptedApiKey);
@@ -180,7 +183,7 @@ export async function syncCollectionToEmby({
 
     await prisma.syncLog.create({
       data: {
-        userId: collection.userId,
+        userId: userId || null,
         embyServerId: embyServer.id,
         collectionId: collection.id,
         status: result.status,
@@ -202,7 +205,7 @@ export async function syncCollectionToEmby({
 
     await prisma.syncLog.create({
       data: {
-        userId: collection.userId,
+        userId: userId || null,
         embyServerId: embyServer.id,
         collectionId: collection.id,
         status: 'FAILED',
@@ -218,13 +221,14 @@ export async function syncCollectionToEmby({
   return result;
 }
 
-export async function syncUserCollections({
+export async function syncCollections({
   userId,
   prisma,
   collectionId,
   embyServerId,
-}: SyncUserCollectionsOptions): Promise<SyncUserCollectionsResult> {
-  const serverQuery: { userId: string; id?: string } = { userId };
+}: SyncCollectionsOptions): Promise<SyncCollectionsResult> {
+  // Get all servers (global)
+  const serverQuery: { id?: string } = {};
   if (embyServerId) {
     serverQuery.id = embyServerId;
   }
@@ -238,8 +242,8 @@ export async function syncUserCollections({
     };
   }
 
-  const collectionQuery: { userId: string; isEnabled: boolean; id?: string } = {
-    userId,
+  // Get all enabled collections (global)
+  const collectionQuery: { isEnabled: boolean; id?: string } = {
     isEnabled: true,
   };
   if (collectionId) {
@@ -270,6 +274,7 @@ export async function syncUserCollections({
         collection,
         embyServer,
         prisma,
+        userId,
       });
       results.push(result);
 
@@ -291,6 +296,9 @@ export async function syncUserCollections({
     results,
   };
 }
+
+// Legacy alias for backwards compatibility
+export const syncUserCollections = syncCollections;
 
 export async function removeCollectionFromEmby({
   collectionName,
@@ -345,6 +353,7 @@ async function getCollectionPosterData(collectionId: string): Promise<PosterData
 
 export default {
   syncCollectionToEmby,
+  syncCollections,
   syncUserCollections,
   removeCollectionFromEmby,
 };

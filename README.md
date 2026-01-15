@@ -22,7 +22,7 @@ docker compose up -d
 
 That's it! Secrets are auto-generated on first run and persisted in the data volume.
 
-Access at `http://localhost:3000`
+Access at `http://localhost:7795`
 
 ### Manual Installation
 
@@ -58,7 +58,7 @@ npm start
 |----------|----------|-------------|
 | `JWT_SECRET` | Auto* | Secret key for JWT tokens (min 32 chars) |
 | `ENCRYPTION_KEY` | Auto* | Key for encrypting API keys (min 32 chars) |
-| `PORT` | No | Server port (default: 3000) |
+| `PORT` | No | Server port (default: 7795) |
 | `DATABASE_URL` | No | SQLite database path |
 | `MDBLIST_API_KEY` | No | Default MDBList API key |
 | `TMDB_API_KEY` | No | TMDb API for poster fallback |

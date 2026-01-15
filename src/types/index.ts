@@ -41,6 +41,7 @@ export interface AppConfig {
 export interface AuthUser {
   id: string;
   email: string;
+  isAdmin: boolean;
 }
 
 export interface JwtPayload {

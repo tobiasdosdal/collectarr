@@ -6,10 +6,10 @@ services:
     container_name: collectarr
     restart: unless-stopped
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORT:-7795}:7795"
     environment:
       - NODE_ENV=production
-      - PORT=3000
+      - PORT=7795
       - HOST=0.0.0.0
       - DATABASE_URL=file:/app/data/collectarr.db
       # Secrets auto-generated on first run if not provided
@@ -24,7 +24,7 @@ services:
     volumes:
       - collectarr-data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7795/health"]
       interval: 30s
       timeout: 10s
       retries: 3

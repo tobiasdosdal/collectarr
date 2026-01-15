@@ -64,14 +64,14 @@ RUN chmod +x /app/docker-entrypoint.sh
 # Environment
 ENV NODE_ENV=production
 ENV DATABASE_URL="file:/app/data/collectarr.db"
-ENV PORT=3000
+ENV PORT=7795
 ENV HOST=0.0.0.0
 
-EXPOSE 3000
+EXPOSE 7795
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:7795/health || exit 1
 
 # Auto-generates secrets if not provided
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

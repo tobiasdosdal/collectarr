@@ -1,6 +1,7 @@
 /**
  * Sonarr Server Management Routes
  * Handles Sonarr server configuration and TV series requests
+ * Servers are now global (shared across all users)
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
@@ -40,16 +41,25 @@ interface LookupQuery {
   tvdbId?: string;
 }
 
+// Helper to check admin status for write operations
+const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
+  if (!request.user || !request.user.isAdmin) {
+    return reply.code(403).send({
+      error: 'Forbidden',
+      message: 'Admin access required',
+    });
+  }
+};
+
 export default async function sonarrRoutes(fastify: FastifyInstance): Promise<void> {
   // All routes require authentication
   fastify.addHook('onRequest', fastify.authenticate);
 
   /**
-   * GET /sonarr/servers - List user's Sonarr servers
+   * GET /sonarr/servers - List all Sonarr servers (global)
    */
-  fastify.get('/servers', async (request: FastifyRequest) => {
+  fastify.get('/servers', async () => {
     const servers = await fastify.prisma.sonarrServer.findMany({
-      where: { userId: request.user!.id },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -65,9 +75,11 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
   });
 
   /**
-   * POST /sonarr/servers - Add a new Sonarr server
+   * POST /sonarr/servers - Add a new Sonarr server (admin only)
    */
-  fastify.post<{ Body: SonarrServerBody }>('/servers', async (request, reply) => {
+  fastify.post<{ Body: SonarrServerBody }>('/servers', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { name, url, apiKey, isDefault, qualityProfileId, rootFolderPath } = request.body;
 
     if (!name || !url || !apiKey) {
@@ -97,7 +109,6 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
     // If setting as default, unset other defaults
     if (isDefault) {
       await fastify.prisma.sonarrServer.updateMany({
-        where: { userId: request.user!.id },
         data: { isDefault: false },
       });
     }
@@ -113,7 +124,6 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
 
     const server = await fastify.prisma.sonarrServer.create({
       data: {
-        userId: request.user!.id,
         name,
         url: url.replace(/\/$/, ''),
         apiKey: encryptedKey.apiKey,
@@ -155,11 +165,8 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /sonarr/servers/:id - Get server details
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id', async (request, reply) => {
-    const server = await fastify.prisma.sonarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.sonarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -195,16 +202,15 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
   });
 
   /**
-   * PATCH /sonarr/servers/:id - Update server config
+   * PATCH /sonarr/servers/:id - Update server config (admin only)
    */
-  fastify.patch<{ Params: ServerParams; Body: SonarrServerBody }>('/servers/:id', async (request, reply) => {
+  fastify.patch<{ Params: ServerParams; Body: SonarrServerBody }>('/servers/:id', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { name, url, apiKey, isDefault, qualityProfileId, rootFolderPath } = request.body;
 
-    const server = await fastify.prisma.sonarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.sonarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -238,7 +244,7 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
     // If setting as default, unset other defaults
     if (isDefault) {
       await fastify.prisma.sonarrServer.updateMany({
-        where: { userId: request.user!.id, id: { not: server.id } },
+        where: { id: { not: server.id } },
         data: { isDefault: false },
       });
     }
@@ -279,14 +285,13 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
   });
 
   /**
-   * DELETE /sonarr/servers/:id - Remove server
+   * DELETE /sonarr/servers/:id - Remove server (admin only)
    */
-  fastify.delete<{ Params: ServerParams }>('/servers/:id', async (request, reply) => {
-    const server = await fastify.prisma.sonarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+  fastify.delete<{ Params: ServerParams }>('/servers/:id', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
+    const server = await fastify.prisma.sonarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -307,11 +312,8 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /sonarr/servers/:id/profiles - Get quality profiles
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id/profiles', async (request, reply) => {
-    const server = await fastify.prisma.sonarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.sonarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -341,11 +343,8 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /sonarr/servers/:id/rootfolders - Get root folders
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id/rootfolders', async (request, reply) => {
-    const server = await fastify.prisma.sonarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.sonarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -377,11 +376,8 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /sonarr/servers/:id/lookup - Search for series
    */
   fastify.get<{ Params: ServerParams; Querystring: LookupQuery }>('/servers/:id/lookup', async (request, reply) => {
-    const server = await fastify.prisma.sonarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.sonarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -421,11 +417,8 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
    * POST /sonarr/servers/:id/add - Add series to Sonarr
    */
   fastify.post<{ Params: ServerParams; Body: AddSeriesBody }>('/servers/:id/add', async (request, reply) => {
-    const server = await fastify.prisma.sonarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.sonarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -517,11 +510,8 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /sonarr/servers/:id/series - Get all series in Sonarr library
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id/series', async (request, reply) => {
-    const server = await fastify.prisma.sonarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.sonarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
@@ -554,11 +544,8 @@ export default async function sonarrRoutes(fastify: FastifyInstance): Promise<vo
    * GET /sonarr/servers/:id/series/:tvdbId - Check if series exists in Sonarr
    */
   fastify.get<{ Params: ServerParams & { tvdbId: string } }>('/servers/:id/series/:tvdbId', async (request, reply) => {
-    const server = await fastify.prisma.sonarrServer.findFirst({
-      where: {
-        id: request.params.id,
-        userId: request.user!.id,
-      },
+    const server = await fastify.prisma.sonarrServer.findUnique({
+      where: { id: request.params.id },
     });
 
     if (!server) {
