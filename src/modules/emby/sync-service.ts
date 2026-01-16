@@ -9,8 +9,23 @@ import { readFile, readdir } from 'fs/promises';
 import { decryptApiKey } from '../../utils/api-key-crypto.js';
 import type { PrismaClient, Collection, CollectionItem, EmbyServer } from '@prisma/client';
 
-interface CollectionWithItems extends Collection {
+interface CollectionWithItems {
+  id: string;
+  name: string;
+  description: string | null;
+  sourceType: string;
+  sourceId: string | null;
+  sourceUrl: string | null;
+  posterPath: string | null;
+  isEnabled: boolean;
+  refreshIntervalHours: number;
+  syncToEmbyOnRefresh: boolean;
+  removeFromEmby: boolean;
+  lastSyncAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
   items: CollectionItem[];
+  embyServers?: Array<{ embyServerId: string }>;
 }
 
 interface MatchedItem {
@@ -155,6 +170,16 @@ export async function syncCollectionToEmby({
         if (newItemIds.length > 0) {
           await client.addItemsToCollection(embyCollection.Id, newItemIds);
         }
+
+        if (collection.removeFromEmby) {
+          const itemsToRemove = existingItems
+            .map(item => item.Id)
+            .filter(id => !matchedItemIds.includes(id));
+
+          if (itemsToRemove.length > 0) {
+            await client.removeItemsFromCollection(embyCollection.Id, itemsToRemove);
+          }
+        }
       }
 
       if (collection.posterPath && embyCollection?.Id) {
@@ -254,6 +279,7 @@ export async function syncCollections({
     where: collectionQuery,
     include: {
       items: true,
+      embyServers: true,
     },
   });
 
@@ -268,8 +294,16 @@ export async function syncCollections({
   const results: SyncResult[] = [];
   let hasErrors = false;
 
-  for (const embyServer of embyServers) {
-    for (const collection of collections) {
+  for (const collection of collections) {
+    const allowedServerIds = collection.embyServers?.length
+      ? new Set(collection.embyServers.map((server) => server.embyServerId))
+      : null;
+
+    for (const embyServer of embyServers) {
+      if (allowedServerIds && !allowedServerIds.has(embyServer.id)) {
+        continue;
+      }
+
       const result = await syncCollectionToEmby({
         collection,
         embyServer,

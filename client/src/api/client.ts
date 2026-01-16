@@ -7,7 +7,7 @@ interface RequestOptions extends RequestInit {
   headers?: Record<string, string>;
 }
 
-interface ApiResponse<T> {
+export interface ApiResponse<T> {
   data: T;
 }
 
@@ -71,8 +71,8 @@ class ApiClient {
   }
 
   // Auth endpoints
-  async register(email: string, password: string) {
-    const data = await this.request('/auth/register', {
+  async register(email: string, password: string): Promise<any> {
+    const data: any = await this.request('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -80,8 +80,8 @@ class ApiClient {
     return data;
   }
 
-  async login(email: string, password: string) {
-    const data = await this.request('/auth/login', {
+  async login(email: string, password: string): Promise<any> {
+    const data: any = await this.request('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -89,16 +89,16 @@ class ApiClient {
     return data;
   }
 
-  async getMe() {
+  async getMe(): Promise<any> {
     return this.request('/auth/me');
   }
 
-  async getSetupStatus() {
+  async getSetupStatus(): Promise<any> {
     return this.request('/auth/setup/status');
   }
 
-  async setupAdmin(email: string, password: string) {
-    const data = await this.request('/auth/setup', {
+  async setupAdmin(email: string, password: string): Promise<any> {
+    const data: any = await this.request('/auth/setup', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -106,82 +106,82 @@ class ApiClient {
     return data;
   }
 
-  async regenerateApiKey() {
+  async regenerateApiKey(): Promise<any> {
     return this.request('/auth/api-key/regenerate', { method: 'POST' });
   }
 
-  async getTraktAuthUrl() {
+  async getTraktAuthUrl(): Promise<any> {
     return this.request('/auth/trakt/authorize');
   }
 
-  async disconnectTrakt() {
+  async disconnectTrakt(): Promise<any> {
     return this.request('/auth/trakt/disconnect', { method: 'POST' });
   }
 
-  async connectMdblist(apiKey: string) {
+  async connectMdblist(apiKey: string): Promise<any> {
     return this.request('/auth/mdblist/connect', {
       method: 'POST',
       body: JSON.stringify({ apiKey }),
     });
   }
 
-  async disconnectMdblist() {
+  async disconnectMdblist(): Promise<any> {
     return this.request('/auth/mdblist/disconnect', { method: 'POST' });
   }
 
   // Collections
-  async getCollections() {
+  async getCollections(): Promise<any> {
     return this.request('/collections');
   }
 
-  async getCollection(id: string) {
+  async getCollection(id: string): Promise<any> {
     return this.request(`/collections/${id}`);
   }
 
-  async createCollection(data: Record<string, any>) {
+  async createCollection(data: Record<string, any>): Promise<any> {
     return this.request('/collections', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async updateCollection(id: string, data: Record<string, any>) {
+  async updateCollection(id: string, data: Record<string, any>): Promise<any> {
     return this.request(`/collections/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteCollection(id: string) {
+  async deleteCollection(id: string): Promise<any> {
     return this.request(`/collections/${id}`, { method: 'DELETE' });
   }
 
-  async refreshCollection(id: string) {
+  async refreshCollection(id: string): Promise<any> {
     return this.request(`/collections/${id}/refresh`, { method: 'POST' });
   }
 
-  async addCollectionItem(collectionId: string, item: Record<string, any>) {
+  async addCollectionItem(collectionId: string, item: Record<string, any>): Promise<any> {
     return this.request(`/collections/${collectionId}/items`, {
       method: 'POST',
       body: JSON.stringify(item),
     });
   }
 
-  async removeCollectionItem(collectionId: string, itemId: string) {
+  async removeCollectionItem(collectionId: string, itemId: string): Promise<any> {
     return this.request(`/collections/${collectionId}/items/${itemId}`, {
       method: 'DELETE',
     });
   }
 
-  async getCollectionStats(collectionId: string) {
+  async getCollectionStats(collectionId: string): Promise<any> {
     return this.request(`/collections/${collectionId}/stats`);
   }
 
-  async getMissingItems(collectionId: string) {
+  async getMissingItems(collectionId: string): Promise<any> {
     return this.request(`/collections/${collectionId}/missing`);
   }
 
-  async uploadCollectionPoster(collectionId: string, file: File) {
+  async uploadCollectionPoster(collectionId: string, file: File): Promise<any> {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -205,22 +205,22 @@ class ApiClient {
     return response.json();
   }
 
-  async deleteCollectionPoster(collectionId: string) {
+  async deleteCollectionPoster(collectionId: string): Promise<any> {
     return this.request(`/collections/${collectionId}/poster`, { method: 'DELETE' });
   }
 
   // Users
-  async getProfile() {
+  async getProfile(): Promise<any> {
     return this.request('/users/profile');
   }
 
   // Admin: List all users
-  async getUsers() {
+  async getUsers(): Promise<any> {
     return this.request('/users/list');
   }
 
   // Admin: Create user
-  async createUser(email: string, password: string, isAdmin = false) {
+  async createUser(email: string, password: string, isAdmin = false): Promise<any> {
     return this.request('/users', {
       method: 'POST',
       body: JSON.stringify({ email, password, isAdmin }),
@@ -228,7 +228,7 @@ class ApiClient {
   }
 
   // Admin: Update user (or user updating themselves)
-  async updateUser(id: string, data: { email?: string; password?: string; isAdmin?: boolean }) {
+  async updateUser(id: string, data: { email?: string; password?: string; isAdmin?: boolean }): Promise<any> {
     return this.request(`/users/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -236,53 +236,53 @@ class ApiClient {
   }
 
   // Admin: Delete user
-  async deleteUser(id: string) {
+  async deleteUser(id: string): Promise<any> {
     return this.request(`/users/${id}`, { method: 'DELETE' });
   }
 
   // Emby Servers
-  async getEmbyServers() {
+  async getEmbyServers(): Promise<any> {
     return this.request('/emby/servers');
   }
 
-  async addEmbyServer(data: Record<string, any>) {
+  async addEmbyServer(data: Record<string, any>): Promise<any> {
     return this.request('/emby/servers', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async testEmbyConnection(url: string, apiKey: string) {
+  async testEmbyConnection(url: string, apiKey: string): Promise<any> {
     return this.request('/emby/servers/test', {
       method: 'POST',
       body: JSON.stringify({ url, apiKey }),
     });
   }
 
-  async getEmbyServer(id: string) {
+  async getEmbyServer(id: string): Promise<any> {
     return this.request(`/emby/servers/${id}`);
   }
 
-  async updateEmbyServer(id: string, data: Record<string, any>) {
+  async updateEmbyServer(id: string, data: Record<string, any>): Promise<any> {
     return this.request(`/emby/servers/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteEmbyServer(id: string) {
+  async deleteEmbyServer(id: string): Promise<any> {
     return this.request(`/emby/servers/${id}`, { method: 'DELETE' });
   }
 
-  async getEmbyServerLibraries(serverId: string) {
+  async getEmbyServerLibraries(serverId: string): Promise<any> {
     return this.request(`/emby/servers/${serverId}/libraries`);
   }
 
-  async getEmbyServerCollections(serverId: string) {
+  async getEmbyServerCollections(serverId: string): Promise<any> {
     return this.request(`/emby/servers/${serverId}/collections`);
   }
 
-  async searchEmbyServer(serverId: string, query: Record<string, any>) {
+  async searchEmbyServer(serverId: string, query: Record<string, any>): Promise<any> {
     return this.request(`/emby/servers/${serverId}/search`, {
       method: 'POST',
       body: JSON.stringify(query),
@@ -290,26 +290,26 @@ class ApiClient {
   }
 
   // Emby Sync
-  async syncToEmby() {
+  async syncToEmby(): Promise<any> {
     return this.request('/emby/sync', { method: 'POST' });
   }
 
-  async syncCollectionToEmby(collectionId: string) {
+  async syncCollectionToEmby(collectionId: string): Promise<any> {
     return this.request(`/emby/sync/collection/${collectionId}`, { method: 'POST' });
   }
 
-  async syncToEmbyServer(serverId: string) {
+  async syncToEmbyServer(serverId: string): Promise<any> {
     return this.request(`/emby/sync/server/${serverId}`, { method: 'POST' });
   }
 
-  async getSyncLogs(limit = 50, collectionId?: string, embyServerId?: string) {
+  async getSyncLogs(limit = 50, collectionId?: string, embyServerId?: string): Promise<any> {
     let url = `/emby/sync/logs?limit=${limit}`;
     if (collectionId) url += `&collectionId=${collectionId}`;
     if (embyServerId) url += `&embyServerId=${embyServerId}`;
     return this.request(url);
   }
 
-  async removeCollectionFromEmby(serverId: string, collectionName: string) {
+  async removeCollectionFromEmby(serverId: string, collectionName: string): Promise<any> {
     return this.request(`/emby/servers/${serverId}/remove-collection`, {
       method: 'POST',
       body: JSON.stringify({ collectionName }),
@@ -317,181 +317,181 @@ class ApiClient {
   }
 
   // Sources - MDBList
-  async searchMdblistLists(query: string) {
+  async searchMdblistLists(query: string): Promise<any> {
     return this.request(`/sources/mdblist/search?q=${encodeURIComponent(query)}`);
   }
 
-  async getTopMdblistLists() {
+  async getTopMdblistLists(): Promise<any> {
     return this.request('/sources/mdblist/top');
   }
 
-  async getMdblistListItems(listId: string) {
+  async getMdblistListItems(listId: string): Promise<any> {
     return this.request(`/sources/mdblist/lists/${listId}/items`);
   }
 
   // Sources - Trakt
-  async getTraktLists() {
+  async getTraktLists(): Promise<any> {
     return this.request('/sources/trakt/lists');
   }
 
-  async getTraktWatchlist() {
+  async getTraktWatchlist(): Promise<any> {
     return this.request('/sources/trakt/watchlist');
   }
 
-  async getTraktCollection(type = 'movies') {
+  async getTraktCollection(type = 'movies'): Promise<any> {
     return this.request(`/sources/trakt/collection?type=${type}`);
   }
 
-  async getPopularTraktLists() {
+  async getPopularTraktLists(): Promise<any> {
     return this.request('/sources/trakt/popular-lists');
   }
 
-  async searchTraktLists(query: string) {
+  async searchTraktLists(query: string): Promise<any> {
     return this.request(`/sources/trakt/search-lists?q=${encodeURIComponent(query)}`);
   }
 
-  async getTrendingMovies() {
+  async getTrendingMovies(): Promise<any> {
     return this.request('/sources/trakt/trending/movies');
   }
 
-  async getTrendingShows() {
+  async getTrendingShows(): Promise<any> {
     return this.request('/sources/trakt/trending/shows');
   }
 
   // Jobs
-  async getJobsStatus() {
+  async getJobsStatus(): Promise<any> {
     return this.request('/jobs/status');
   }
 
-  async runJob(jobName: string) {
+  async runJob(jobName: string): Promise<any> {
     return this.request(`/jobs/${jobName}/run`, { method: 'POST' });
   }
 
   // Radarr Servers
-  async getRadarrServers() {
+  async getRadarrServers(): Promise<any> {
     return this.request('/radarr/servers');
   }
 
-  async addRadarrServer(data: Record<string, any>) {
+  async addRadarrServer(data: Record<string, any>): Promise<any> {
     return this.request('/radarr/servers', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async testRadarrConnection(url: string, apiKey: string) {
+  async testRadarrConnection(url: string, apiKey: string): Promise<any> {
     return this.request('/radarr/servers/test', {
       method: 'POST',
       body: JSON.stringify({ url, apiKey }),
     });
   }
 
-  async getRadarrServer(id: string) {
+  async getRadarrServer(id: string): Promise<any> {
     return this.request(`/radarr/servers/${id}`);
   }
 
-  async updateRadarrServer(id: string, data: Record<string, any>) {
+  async updateRadarrServer(id: string, data: Record<string, any>): Promise<any> {
     return this.request(`/radarr/servers/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteRadarrServer(id: string) {
+  async deleteRadarrServer(id: string): Promise<any> {
     return this.request(`/radarr/servers/${id}`, { method: 'DELETE' });
   }
 
-  async getRadarrProfiles(serverId: string) {
+  async getRadarrProfiles(serverId: string): Promise<any> {
     return this.request(`/radarr/servers/${serverId}/profiles`);
   }
 
-  async getRadarrRootFolders(serverId: string) {
+  async getRadarrRootFolders(serverId: string): Promise<any> {
     return this.request(`/radarr/servers/${serverId}/rootfolders`);
   }
 
-  async lookupRadarrMovie(serverId: string, params: { term?: string; tmdbId?: string }) {
+  async lookupRadarrMovie(serverId: string, params: { term?: string; tmdbId?: string }): Promise<any> {
     const query = new URLSearchParams();
     if (params.term) query.set('term', params.term);
     if (params.tmdbId) query.set('tmdbId', params.tmdbId);
     return this.request(`/radarr/servers/${serverId}/lookup?${query.toString()}`);
   }
 
-  async addToRadarr(serverId: string, movie: Record<string, any>) {
+  async addToRadarr(serverId: string, movie: Record<string, any>): Promise<any> {
     return this.request(`/radarr/servers/${serverId}/add`, {
       method: 'POST',
       body: JSON.stringify(movie),
     });
   }
 
-  async checkMovieInRadarr(serverId: string, tmdbId: number) {
+  async checkMovieInRadarr(serverId: string, tmdbId: number): Promise<any> {
     return this.request(`/radarr/servers/${serverId}/movies/${tmdbId}`);
   }
 
-  async getRadarrMovies(serverId: string) {
+  async getRadarrMovies(serverId: string): Promise<any> {
     return this.request(`/radarr/servers/${serverId}/movies`);
   }
 
   // Sonarr Servers
-  async getSonarrServers() {
+  async getSonarrServers(): Promise<any> {
     return this.request('/sonarr/servers');
   }
 
-  async addSonarrServer(data: Record<string, any>) {
+  async addSonarrServer(data: Record<string, any>): Promise<any> {
     return this.request('/sonarr/servers', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async testSonarrConnection(url: string, apiKey: string) {
+  async testSonarrConnection(url: string, apiKey: string): Promise<any> {
     return this.request('/sonarr/servers/test', {
       method: 'POST',
       body: JSON.stringify({ url, apiKey }),
     });
   }
 
-  async getSonarrServer(id: string) {
+  async getSonarrServer(id: string): Promise<any> {
     return this.request(`/sonarr/servers/${id}`);
   }
 
-  async updateSonarrServer(id: string, data: Record<string, any>) {
+  async updateSonarrServer(id: string, data: Record<string, any>): Promise<any> {
     return this.request(`/sonarr/servers/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteSonarrServer(id: string) {
+  async deleteSonarrServer(id: string): Promise<any> {
     return this.request(`/sonarr/servers/${id}`, { method: 'DELETE' });
   }
 
-  async getSonarrProfiles(serverId: string) {
+  async getSonarrProfiles(serverId: string): Promise<any> {
     return this.request(`/sonarr/servers/${serverId}/profiles`);
   }
 
-  async getSonarrRootFolders(serverId: string) {
+  async getSonarrRootFolders(serverId: string): Promise<any> {
     return this.request(`/sonarr/servers/${serverId}/rootfolders`);
   }
 
-  async lookupSonarrSeries(serverId: string, params: { term?: string; tvdbId?: string }) {
+  async lookupSonarrSeries(serverId: string, params: { term?: string; tvdbId?: string }): Promise<any> {
     const query = new URLSearchParams();
     if (params.term) query.set('term', params.term);
     if (params.tvdbId) query.set('tvdbId', params.tvdbId);
     return this.request(`/sonarr/servers/${serverId}/lookup?${query.toString()}`);
   }
 
-  async addToSonarr(serverId: string, series: Record<string, any>) {
+  async addToSonarr(serverId: string, series: Record<string, any>): Promise<any> {
     return this.request(`/sonarr/servers/${serverId}/add`, {
       method: 'POST',
       body: JSON.stringify(series),
     });
   }
 
-  async checkSeriesInSonarr(serverId: string, tvdbId: number) {
+  async checkSeriesInSonarr(serverId: string, tvdbId: number): Promise<any> {
     return this.request(`/sonarr/servers/${serverId}/series/${tvdbId}`);
   }
 
-  async getSonarrSeries(serverId: string) {
+  async getSonarrSeries(serverId: string): Promise<any> {
     return this.request(`/sonarr/servers/${serverId}/series`);
   }
 

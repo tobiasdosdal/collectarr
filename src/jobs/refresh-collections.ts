@@ -5,6 +5,7 @@
 
 import { createMDBListClient } from '../modules/external/mdblist/client.js';
 import { createTraktClient } from '../modules/external/trakt/client.js';
+import { syncCollections } from '../modules/emby/sync-service.js';
 import { ensureValidTraktTokens } from '../utils/trakt-auth.js';
 import { withRetry } from '../utils/retry.js';
 import { cacheImage } from '../utils/image-cache.js';
@@ -59,7 +60,7 @@ export async function refreshCollectionsJob(fastify: FastifyInstance): Promise<R
   for (const collection of collections) {
     if (collection.lastSyncAt) {
       const hoursSinceSync = (now.getTime() - new Date(collection.lastSyncAt).getTime()) / (1000 * 60 * 60);
-      if (hoursSinceSync < collection.syncInterval) {
+      if (hoursSinceSync < collection.refreshIntervalHours) {
         skipped++;
         continue;
       }
@@ -123,29 +124,51 @@ async function refreshCollection(fastify: FastifyInstance, collection: Refreshab
     throw error;
   }
 
-  const previousCount = await prisma.collectionItem.count({
+  const existingItems = await prisma.collectionItem.findMany({
     where: { collectionId: collection.id },
+    select: {
+      id: true,
+      imdbId: true,
+      tmdbId: true,
+      tvdbId: true,
+      inEmby: true,
+      embyItemId: true,
+    },
   });
+
+  const previousCount = existingItems.length;
+  const existingByImdb = new Map(existingItems.filter(item => item.imdbId).map(item => [item.imdbId!, item]));
+  const existingByTmdb = new Map(existingItems.filter(item => item.tmdbId).map(item => [item.tmdbId!, item]));
+  const existingByTvdb = new Map(existingItems.filter(item => item.tvdbId).map(item => [item.tvdbId!, item]));
 
   await prisma.$transaction([
     prisma.collectionItem.deleteMany({
       where: { collectionId: collection.id },
     }),
     prisma.collectionItem.createMany({
-      data: items.map((item) => ({
-        collectionId: collection.id,
-        mediaType: item.mediaType,
-        title: item.title,
-        year: item.year,
-        imdbId: item.imdbId,
-        tmdbId: item.tmdbId,
-        traktId: item.traktId,
-        tvdbId: item.tvdbId,
-        posterPath: item.posterPath,
-        backdropPath: item.backdropPath,
-        rating: item.rating,
-        ratingCount: item.ratingCount,
-      })),
+      data: items.map((item) => {
+        const existingByImdbItem = item.imdbId ? existingByImdb.get(item.imdbId) : undefined;
+        const existingByTmdbItem = item.tmdbId ? existingByTmdb.get(item.tmdbId) : undefined;
+        const existingByTvdbItem = item.tvdbId ? existingByTvdb.get(item.tvdbId) : undefined;
+        const existing = existingByImdbItem || existingByTmdbItem || existingByTvdbItem;
+
+        return {
+          collectionId: collection.id,
+          mediaType: item.mediaType,
+          title: item.title,
+          year: item.year,
+          imdbId: item.imdbId,
+          tmdbId: item.tmdbId,
+          traktId: item.traktId,
+          tvdbId: item.tvdbId,
+          posterPath: item.posterPath,
+          backdropPath: item.backdropPath,
+          rating: item.rating,
+          ratingCount: item.ratingCount,
+          inEmby: existing?.inEmby ?? false,
+          embyItemId: existing?.embyItemId ?? null,
+        };
+      }),
     }),
     prisma.collection.update({
       where: { id: collection.id },
@@ -169,6 +192,13 @@ async function refreshCollection(fastify: FastifyInstance, collection: Refreshab
       completedAt: new Date(),
     },
   });
+
+  if (collection.syncToEmbyOnRefresh) {
+    await syncCollections({
+      prisma,
+      collectionId: collection.id,
+    });
+  }
 
   log.info(`Refreshed ${collection.name}: ${items.length} items`);
 }
@@ -195,17 +225,28 @@ async function refreshFromMdblist(
   );
 
   const enrichedItems: CollectionItem[] = [];
-  const batchSize = 2; // Reduced to minimize TMDB rate limiting
 
-  for (let i = 0; i < basicItems.length; i += batchSize) {
-    const batch = basicItems.slice(i, i + batchSize);
-    const batchResults = await Promise.all(
-      batch.map(item => fetchItemDetails(item, apiKey))
-    );
-    enrichedItems.push(...batchResults);
+  // Fetch items one-by-one instead of in batches
+  for (let i = 0; i < basicItems.length; i++) {
+    const item = basicItems[i];
+    if (!item) continue;
 
-    if (i + batchSize < basicItems.length) {
-      await new Promise(r => setTimeout(r, 500)); // Increased delay for rate limiting
+    try {
+      const enrichedItem = await fetchItemDetails(item, apiKey);
+      enrichedItems.push(enrichedItem);
+
+      // Log progress every 50 items
+      if (enrichedItems.length % 50 === 0) {
+        console.log(`MDBList: Enriched ${enrichedItems.length}/${basicItems.length} items for collection ${collection.id}`);
+      }
+
+      // Small delay between items to avoid overwhelming the API
+      if (i < basicItems.length - 1) {
+        await new Promise(r => setTimeout(r, 50));
+      }
+    } catch (err) {
+      console.warn(`Failed to enrich item ${i}:`, (err as Error).message);
+      // Continue with next item instead of failing
     }
   }
 

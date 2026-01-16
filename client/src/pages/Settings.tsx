@@ -22,7 +22,6 @@ import {
   ArrowRight,
   Users,
   Shield,
-  Edit,
 } from 'lucide-react';
 
 interface EmbyServer {

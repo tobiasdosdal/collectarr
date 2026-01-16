@@ -1,15 +1,6 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import bcrypt from 'bcrypt';
 import { z } from 'zod';
-
-interface SyncLogsQuery {
-  limit?: string;
-  offset?: string;
-}
-
-interface UserParams {
-  id: string;
-}
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 
 const createUserSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -23,12 +14,11 @@ const updateUserSchema = z.object({
   isAdmin: z.boolean().optional(),
 });
 
-export default async function usersRoutes(fastify: FastifyInstance): Promise<void> {
+export default async function usersRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
 
   // Admin routes - require admin access
-  // Helper to check admin status (must be used after authenticate)
   const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.user || !request.user.isAdmin) {
       return reply.code(403).send({
@@ -57,14 +47,14 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
   });
 
   // Create new user (admin only)
-  fastify.post<{ Body: z.infer<typeof createUserSchema> }>('/', {
+  fastify.post('/', {
     preHandler: [fastify.authenticate, requireAdmin],
   }, async (request, reply) => {
     const validation = createUserSchema.safeParse(request.body);
     if (!validation.success) {
       return reply.code(400).send({
         error: 'Validation Error',
-        details: z.flattenError(validation.error).fieldErrors,
+        details: validation.error.flatten().fieldErrors,
       });
     }
 
@@ -79,14 +69,6 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
       return reply.code(409).send({
         error: 'Conflict',
         message: 'Email already registered',
-      });
-    }
-
-    // Prevent creating another admin if current user is not admin (extra safety)
-    if (isAdmin && !request.user?.isAdmin) {
-      return reply.code(403).send({
-        error: 'Forbidden',
-        message: 'Only admins can create admin users',
       });
     }
 
@@ -106,24 +88,17 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
       },
     });
 
-    fastify.log.info({
-      createdBy: request.user!.email,
-      newUserEmail: email,
-      isAdmin,
-    }, 'User created by admin');
-
     return reply.code(201).send(user);
   });
 
   // Update user (admin only, or user updating themselves)
-  fastify.patch<{ Params: UserParams; Body: z.infer<typeof updateUserSchema> }>('/:id', {
+  fastify.patch<{ Params: { id: string } }>('/:id', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const { id } = request.params;
-    const isAdmin = request.user!.isAdmin;
-    const isSelf = request.user!.id === id;
+    const isAdmin = request.user.isAdmin;
+    const isSelf = request.user.id === id;
 
-    // Only admins can update other users, or users can update themselves (limited fields)
     if (!isAdmin && !isSelf) {
       return reply.code(403).send({
         error: 'Forbidden',
@@ -135,13 +110,12 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
     if (!validation.success) {
       return reply.code(400).send({
         error: 'Validation Error',
-        details: z.flattenError(validation.error).fieldErrors,
+        details: validation.error.flatten().fieldErrors,
       });
     }
 
     const { email, password, isAdmin: newIsAdmin } = validation.data;
 
-    // Find the user
     const targetUser = await fastify.prisma.user.findUnique({
       where: { id },
     });
@@ -174,14 +148,6 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
       }
     }
 
-    // Prevent non-admins from creating admins
-    if (!isAdmin && newIsAdmin === true) {
-      return reply.code(403).send({
-        error: 'Forbidden',
-        message: 'Only admins can grant admin privileges',
-      });
-    }
-
     // Build update data
     const updateData: { email?: string; passwordHash?: string; isAdmin?: boolean } = {};
     if (email) updateData.email = email;
@@ -204,23 +170,16 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
       },
     });
 
-    fastify.log.info({
-      updatedBy: request.user!.email,
-      targetUserId: id,
-      changes: Object.keys(updateData),
-    }, 'User updated');
-
     return updated;
   });
 
   // Delete user (admin only, cannot delete self)
-  fastify.delete<{ Params: UserParams }>('/:id', {
+  fastify.delete<{ Params: { id: string } }>('/:id', {
     preHandler: [fastify.authenticate, requireAdmin],
   }, async (request, reply) => {
     const { id } = request.params;
 
-    // Cannot delete yourself
-    if (request.user!.id === id) {
+    if (request.user.id === id) {
       return reply.code(400).send({
         error: 'Bad Request',
         message: 'You cannot delete your own account',
@@ -255,18 +214,13 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
       where: { id },
     });
 
-    fastify.log.info({
-      deletedBy: request.user!.email,
-      deletedUserEmail: targetUser.email,
-    }, 'User deleted by admin');
-
     return reply.code(204).send();
   });
 
   // Get user profile
-  fastify.get('/profile', async (request: FastifyRequest) => {
+  fastify.get('/profile', async (request) => {
     const user = await fastify.prisma.user.findUnique({
-      where: { id: request.user!.id },
+      where: { id: request.user.id },
       select: {
         id: true,
         email: true,
@@ -280,11 +234,11 @@ export default async function usersRoutes(fastify: FastifyInstance): Promise<voi
   });
 
   // Get sync logs for user
-  fastify.get<{ Querystring: SyncLogsQuery }>('/sync-logs', async (request) => {
+  fastify.get<{ Querystring: { limit?: string; offset?: string } }>('/sync-logs', async (request) => {
     const { limit = '50', offset = '0' } = request.query;
 
     const logs = await fastify.prisma.syncLog.findMany({
-      where: { userId: request.user!.id },
+      where: { userId: request.user.id },
       orderBy: { startedAt: 'desc' },
       take: parseInt(limit, 10),
       skip: parseInt(offset, 10),

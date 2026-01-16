@@ -8,10 +8,8 @@ import {
   TrendingUp,
   List,
   Heart,
-  FolderOpen,
   Plus,
   X,
-  ExternalLink,
 } from 'lucide-react';
 
 interface MDBListItem {
@@ -47,7 +45,6 @@ interface AddFromSourceModalProps {
 
 const Browse: FC = () => {
   const [activeTab, setActiveTab] = useState<'mdblist' | 'trakt'>('mdblist');
-  const { user } = useAuth();
 
   return (
     <div>
@@ -389,16 +386,16 @@ const AddFromSourceModal: FC<AddFromSourceModalProps> = ({ source, sourceId, sou
         name,
         sourceType: source,
         sourceId: sourceId || undefined,
+        refreshIntervalHours: 24,
+        syncToEmbyOnRefresh: true,
+        removeFromEmby: false,
+        embyServerIds: [],
       };
       console.log('Creating collection with:', payload);
       const collection = await api.createCollection(payload);
 
-      // Start refresh in background without waiting
-      // This allows images to load as they're fetched, rather than blocking the UI
-      api.refreshCollection(collection.id).catch(err => {
-        console.error('Failed to refresh collection:', err);
-      });
-
+      // Backend automatically triggers background refresh for non-MANUAL collections
+      // Navigate to detail page where polling will show real-time updates
       navigate(`/collections/${collection.id}`);
     } catch (err: any) {
       setError(err.message);

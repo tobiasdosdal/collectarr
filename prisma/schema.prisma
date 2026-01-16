@@ -42,13 +42,16 @@ model Collection {
   sourceUrl    String?
   posterPath   String?
   isEnabled    Boolean   @default(true)
-  syncInterval Int       @default(24)
-  lastSyncAt   DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  refreshIntervalHours Int       @default(24)
+  syncToEmbyOnRefresh  Boolean   @default(true)
+  removeFromEmby       Boolean   @default(true)
+  lastSyncAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  items    CollectionItem[]
-  syncLogs SyncLog[]
+  items        CollectionItem[]
+  syncLogs     SyncLog[]
+  embyServers  CollectionEmbyServer[]
 
   @@unique([sourceType, sourceId])
 }
@@ -93,9 +96,22 @@ model EmbyServer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  syncLogs SyncLog[]
+  syncLogs     SyncLog[]
+  collections CollectionEmbyServer[]
 
   @@index([isDefault])
+}
+
+model CollectionEmbyServer {
+  collectionId String
+  embyServerId String
+  createdAt    DateTime @default(now())
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  embyServer EmbyServer @relation(fields: [embyServerId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, embyServerId])
+  @@index([embyServerId])
 }
 
 model SyncLog {

@@ -1,16 +1,21 @@
-import { BrowserRouter, Routes, Route, Navigate, ReactNode } from 'react-router-dom';
+import { ReactNode } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
+import { SettingsLayout } from './components/SettingsLayout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Collections from './pages/Collections';
 import CollectionDetail from './pages/CollectionDetail';
 import Browse from './pages/Browse';
-import Settings from './pages/Settings';
+import SettingsGeneral from './pages/settings/SettingsGeneral';
+import SettingsEmby from './pages/settings/SettingsEmby';
+import SettingsDownloaders from './pages/settings/SettingsDownloaders';
+import SettingsUsers from './pages/settings/SettingsUsers';
 import './styles/main.css';
 
 const queryClient = new QueryClient({
@@ -121,13 +126,19 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/settings"
+        path="/settings/*"
         element={
           <PrivateRoute>
-            <Settings />
+            <SettingsLayout />
           </PrivateRoute>
         }
-      />
+      >
+        <Route index element={<Navigate to="/settings/general" replace />} />
+        <Route path="general" element={<SettingsGeneral />} />
+        <Route path="emby" element={<SettingsEmby />} />
+        <Route path="downloaders" element={<SettingsDownloaders />} />
+        <Route path="users" element={<SettingsUsers />} />
+      </Route>
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" />} />

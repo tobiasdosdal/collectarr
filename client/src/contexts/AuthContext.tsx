@@ -36,7 +36,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     // Check setup status first
     api.getSetupStatus()
-      .then((status) => {
+      .then((status: any) => {
         setSetupRequired(status.setupRequired);
         
         // Only try to load user if setup is complete
@@ -44,7 +44,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           const token = localStorage.getItem('token');
           if (token) {
             return api.getMe()
-              .then(setUser)
+              .then((user: any) => setUser(user))
               .catch(() => {
                 localStorage.removeItem('token');
               });
@@ -56,7 +56,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const token = localStorage.getItem('token');
         if (token) {
           api.getMe()
-            .then(setUser)
+            .then((user: any) => setUser(user))
             .catch(() => {
               localStorage.removeItem('token');
             });

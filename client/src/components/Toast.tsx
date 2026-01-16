@@ -1,7 +1,7 @@
 import { useEffect, useState, createContext, useContext, ReactNode } from 'react';
-import { CheckCircle, XCircle, X } from 'lucide-react';
+import { CheckCircle, XCircle, X, Info, AlertTriangle } from 'lucide-react';
 
-type ToastType = 'success' | 'error';
+type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 interface ToastItem {
   id: number;
@@ -45,7 +45,13 @@ export function ToastProvider({ children }: ToastProviderProps) {
       {children}
       <div className="toast-container">
         {toasts.map(toast => {
-          const Icon = toast.type === 'success' ? CheckCircle : XCircle;
+          let Icon;
+          switch (toast.type) {
+            case 'success': Icon = CheckCircle; break;
+            case 'error': Icon = XCircle; break;
+            case 'warning': Icon = AlertTriangle; break;
+            case 'info': default: Icon = Info; break;
+          }
 
           return (
             <div

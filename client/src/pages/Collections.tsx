@@ -1,6 +1,6 @@
-import { FC, useEffect, useState, useMemo, ChangeEvent, FormEvent } from 'react';
+import { FC, useEffect, useState, useMemo, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Toast } from '../components/Toast';
+import { useToast } from '../components/Toast';
 import api from '../api/client';
 import { useDebounce } from '../hooks/useDebounce';
 import {
@@ -23,6 +23,7 @@ interface Collection {
   itemCount: number;
   lastSyncAt?: string;
   posterPath?: string;
+  embyServerIds?: string[];
 }
 
 interface CollectionStats {
@@ -66,6 +67,7 @@ const Collections: FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const { addToast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sourceTypeFilters, setSourceTypeFilters] = useState<string[]>([]);
@@ -178,7 +180,7 @@ const Collections: FC = () => {
       await api.refreshCollection(collectionId);
       await loadCollections();
     } catch (err: any) {
-      <Toast message={`Failed to refresh: ${err.message}`} type="error" />;
+      addToast(`Failed to refresh: ${err.message}`, 'error');
     } finally {
       setRefreshing(null);
     }
@@ -190,9 +192,9 @@ const Collections: FC = () => {
     try {
       await api.deleteCollection(collectionId);
       setCollections(collections.filter((c) => c.id !== collectionId));
-      <Toast message="Collection deleted successfully" type="success" />;
+      addToast("Collection deleted successfully", "success");
     } catch (err: any) {
-      <Toast message={`Failed to delete: ${err.message}`} type="error" />;
+      addToast(`Failed to delete: ${err.message}`, "error");
     }
   };
 
@@ -528,6 +530,10 @@ const CreateCollectionModal: FC<CreateCollectionModalProps> = ({ onClose, onCrea
         name,
         description,
         sourceType: 'MANUAL',
+        refreshIntervalHours: 24,
+        syncToEmbyOnRefresh: true,
+        removeFromEmby: false,
+        embyServerIds: [],
       });
       onCreated(collection);
     } catch (err: any) {

@@ -193,16 +193,14 @@ class EmbyClient {
       });
 
       const items = result.Items || [];
+      const expectedType = itemType.toLowerCase();
       for (const item of items) {
         const titleMatch = item.Name?.toLowerCase() === title.toLowerCase();
         const yearMatch = !year || item.ProductionYear === year;
-        if (titleMatch && yearMatch) {
+        const typeMatch = item.Type?.toLowerCase() === expectedType;
+        if (titleMatch && yearMatch && typeMatch) {
           return item;
         }
-      }
-
-      if (items.length > 0) {
-        return items[0]!;
       }
     }
 

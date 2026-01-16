@@ -1,6 +1,9 @@
 import { FC, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Film, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 
 const Register: FC = () => {
   const { setupRequired, loading: authLoading } = useAuth();
@@ -8,7 +11,6 @@ const Register: FC = () => {
 
   useEffect(() => {
     // If setup is required, redirect to login (which will show setup)
-    // If setup is not required, show message that registration is disabled
     if (!authLoading && setupRequired) {
       navigate('/login');
     }
@@ -16,80 +18,59 @@ const Register: FC = () => {
 
   if (authLoading) {
     return (
-      <div className="auth-container">
-        <div className="spinner" />
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   if (setupRequired) {
-    // Redirecting to login for setup
     return null;
   }
 
   return (
-    <div className="login-page">
-      {/* Animated background elements */}
-      <div className="login-bg-effects">
-        <div className="spotlight spotlight-1" />
-        <div className="spotlight spotlight-2" />
-        <div className="film-grain" />
-        <div className="vignette" />
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative overflow-hidden">
+      {/* Background Ambience */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[1000px] h-[1000px] rounded-full bg-primary/5 blur-[120px]" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[800px] h-[800px] rounded-full bg-blue-500/5 blur-[120px]" />
       </div>
 
-      {/* Film strip decoration */}
-      <div className="film-strip film-strip-left">
-        {[...Array(12)].map((_, i) => (
-          <div key={i} className="film-frame" style={{ animationDelay: `${i * 0.1}s` }} />
-        ))}
-      </div>
-      <div className="film-strip film-strip-right">
-        {[...Array(12)].map((_, i) => (
-          <div key={i} className="film-frame" style={{ animationDelay: `${i * 0.1 + 0.5}s` }} />
-        ))}
-      </div>
-
-      <div className="login-content">
-        {/* Hero branding */}
-        <div className="login-hero">
-          <div className="logo-icon">
-            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="2" />
-              <circle cx="24" cy="24" r="8" fill="currentColor" />
-              <path d="M24 4V12M24 36V44M4 24H12M36 24H44" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              <circle cx="24" cy="24" r="14" stroke="currentColor" strokeWidth="1" strokeDasharray="4 4" />
-            </svg>
+      <div className="w-full max-w-md relative z-10">
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary/60 shadow-lg shadow-primary/20 mx-auto mb-6">
+            <Film className="h-8 w-8 text-primary-foreground" />
           </div>
-          <h1 className="brand-name">Collectarr</h1>
-          <p className="brand-tagline">Your personal media universe</p>
+          <h1 className="text-4xl font-bold tracking-tight mb-2 bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">Collectarr</h1>
+          <p className="text-muted-foreground tracking-wide uppercase text-sm font-medium">Your Personal Media Universe</p>
         </div>
 
-        {/* Register form card */}
-        <div className="login-card">
-          <div className="login-card-inner">
-            <div className="login-header">
-              <h2>Registration Disabled</h2>
-              <p>Public registration is not available</p>
-            </div>
-
-            <div className="bg-secondary/30 rounded-xl p-6 text-center">
-              <p className="text-muted-foreground mb-4">
+        <Card className="border-border/50 bg-card/50 backdrop-blur-xl shadow-2xl">
+          <CardHeader className="space-y-1 text-center">
+            <CardTitle className="text-xl">Registration Disabled</CardTitle>
+            <CardDescription>
+              Public registration is not available
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-secondary/50 rounded-lg p-4 text-center text-sm border border-border/50">
+              <p className="text-muted-foreground mb-2">
                 This is a self-hosted instance. To create an account, please contact an administrator.
               </p>
-              <p className="text-sm text-muted-foreground/70">
+              <p className="text-muted-foreground/70">
                 Administrators can create new user accounts from the Settings page.
               </p>
             </div>
-
-            <div className="login-footer">
-              <span>Already have an account?</span>
-              <Link to="/login">Sign in</Link>
+          </CardContent>
+          <CardFooter className="justify-center border-t border-border/40 pt-6">
+            <div className="text-sm text-muted-foreground">
+              <span>Already have an account? </span>
+              <Button asChild variant="link" className="p-0 h-auto font-normal text-primary">
+                <Link to="/login">Sign in</Link>
+              </Button>
             </div>
-          </div>
-        </div>
-
-        {/* Bottom accent */}
-        <div className="login-accent-line" />
+          </CardFooter>
+        </Card>
       </div>
     </div>
   );

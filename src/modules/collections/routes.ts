@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getCachedImageUrl, cacheImage, queueMissingImages } from '../../utils/image-cache.js';
+import { syncCollections } from '../emby/sync-service.js';
 import type { AppConfig } from '../../types/index.js';
 
 const createCollectionSchema = z.object({
@@ -9,14 +10,20 @@ const createCollectionSchema = z.object({
   sourceType: z.enum(['MDBLIST', 'TRAKT_LIST', 'TRAKT_WATCHLIST', 'TRAKT_COLLECTION', 'MANUAL']),
   sourceId: z.string().optional(),
   sourceUrl: z.string().optional(),
-  syncInterval: z.number().min(1).max(168).default(24),
+  refreshIntervalHours: z.number().min(1).max(8760).default(24).transform((value) => Math.floor(value)),
+  syncToEmbyOnRefresh: z.boolean().default(true),
+  removeFromEmby: z.boolean().default(true),
+  embyServerIds: z.array(z.string()).optional(),
 });
 
 const updateCollectionSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   isEnabled: z.boolean().optional(),
-  syncInterval: z.number().min(1).max(168).optional(),
+  refreshIntervalHours: z.number().min(1).max(8760).optional(),
+  syncToEmbyOnRefresh: z.boolean().optional(),
+  removeFromEmby: z.boolean().optional(),
+  embyServerIds: z.array(z.string()).optional(),
 });
 
 interface CollectionParams {
@@ -106,20 +113,22 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
         _count: {
           select: { items: true },
         },
+        embyServers: true,
       },
     });
 
     const collectionsWithCachedPosters = await Promise.all(
       collections.map(async (c) => {
-        let posterPath = c.posterPath;
+        const { _count, embyServers, ...collection } = c;
+        let posterPath = collection.posterPath;
         if (posterPath && posterPath.startsWith('https://image.tmdb.org/')) {
           posterPath = await getCachedImageUrl(posterPath);
         }
         return {
-          ...c,
-          itemCount: c._count.items,
+          ...collection,
+          itemCount: _count.items,
           posterPath,
-          _count: undefined,
+          embyServerIds: embyServers.map(server => server.embyServerId),
         };
       })
     );
@@ -139,7 +148,17 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       });
     }
 
-    const { name, description, sourceType, sourceId, sourceUrl, syncInterval } = validation.data;
+    const {
+      name,
+      description,
+      sourceType,
+      sourceId,
+      sourceUrl,
+      refreshIntervalHours,
+      syncToEmbyOnRefresh,
+      removeFromEmby,
+      embyServerIds,
+    } = validation.data;
 
     const requiresSourceId = ['MDBLIST', 'TRAKT_LIST'].includes(sourceType);
     if (requiresSourceId && !sourceId) {
@@ -172,9 +191,27 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
         sourceType,
         sourceId,
         sourceUrl,
-        syncInterval,
+        refreshIntervalHours,
+        syncToEmbyOnRefresh,
+        removeFromEmby,
+        ...(embyServerIds && embyServerIds.length > 0 ? {
+          embyServers: {
+            create: embyServerIds.map((embyServerId) => ({ embyServerId })),
+          },
+        } : {}),
+      },
+      include: {
+        embyServers: true,
       },
     });
+
+    // Trigger background refresh for non-manual collections (don't await)
+    if (sourceType !== 'MANUAL') {
+      setImmediate(() => {
+        refreshCollectionInBackground(fastify, collection.id, sourceType, sourceId, syncToEmbyOnRefresh)
+          .catch(err => fastify.log.warn(`Background refresh failed for collection ${collection.id}: ${(err as Error).message}`));
+      });
+    }
 
     return reply.code(201).send(collection);
   });
@@ -189,6 +226,7 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
         items: {
           orderBy: { addedAt: 'desc' },
         },
+        embyServers: true,
       },
     });
 
@@ -254,7 +292,18 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
 
     const collection = await fastify.prisma.collection.update({
       where: { id },
-      data: validation.data,
+      data: {
+        ...validation.data,
+        ...(validation.data.embyServerIds ? {
+          embyServers: {
+            deleteMany: {},
+            create: validation.data.embyServerIds.map((embyServerId) => ({ embyServerId })),
+          },
+        } : {}),
+      },
+      include: {
+        embyServers: true,
+      },
     });
 
     return collection;
@@ -284,7 +333,7 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     return reply.code(204).send();
   });
 
-  // Force refresh collection from source
+  // Force refresh collection from source (runs in background for real-time updates)
   fastify.post<{ Params: CollectionParams }>('/:id/refresh', async (request, reply) => {
     const { id } = request.params;
 
@@ -306,53 +355,25 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       });
     }
 
-    // Get API keys from global Settings
-    const settings = await fastify.prisma.settings.findUnique({
-      where: { id: 'singleton' },
+    // Delete existing items first so frontend sees the refresh starting
+    await fastify.prisma.collectionItem.deleteMany({
+      where: { collectionId: id },
     });
 
-    let items: RefreshedItem[] = [];
-    const mdblistApiKey = settings?.mdblistApiKey || fastify.config.external.mdblist.apiKey;
-
-    try {
-      switch (collection.sourceType) {
-        case 'MDBLIST':
-          items = await refreshFromMdblist(collection.sourceId!, mdblistApiKey, fastify.config);
-          break;
-        case 'TRAKT_LIST':
-        case 'TRAKT_WATCHLIST':
-        case 'TRAKT_COLLECTION':
-          items = await refreshFromTrakt(collection, settings, fastify.config);
-          break;
-      }
-    } catch (error) {
-      return reply.code(502).send({
-        error: 'External API Error',
-        message: (error as Error).message,
-      });
-    }
-
-    if (items.length > 0) {
-      await fastify.prisma.$transaction([
-        fastify.prisma.collectionItem.deleteMany({
-          where: { collectionId: id },
-        }),
-        fastify.prisma.collectionItem.createMany({
-          data: items.map((item) => ({
-            collectionId: id,
-            ...item,
-          })),
-        }),
-        fastify.prisma.collection.update({
-          where: { id },
-          data: { lastSyncAt: new Date() },
-        }),
-      ]);
-    }
+    // Start background refresh and return immediately for real-time UI updates
+    setImmediate(() => {
+      refreshCollectionInBackground(
+        fastify,
+        id,
+        collection.sourceType,
+        collection.sourceId || undefined,
+        collection.syncToEmbyOnRefresh
+      ).catch(err => fastify.log.error(`Refresh failed for collection ${id}: ${(err as Error).message}`));
+    });
 
     return {
       success: true,
-      itemCount: items.length,
+      message: 'Refresh started - items will be added progressively',
       lastSyncAt: new Date().toISOString(),
     };
   });
@@ -649,29 +670,37 @@ async function refreshFromMdblist(
       throw new Error(`MDBList API returned unexpected format`);
     }
 
-    console.log(`MDBList: Got ${items.length} items, fetching details...`);
+    console.log(`MDBList: Got ${items.length} items, fetching details one-by-one...`);
 
     const enrichedItems: RefreshedItem[] = [];
-    const batchSize = 2;
 
-    for (let i = 0; i < items.length; i += batchSize) {
-      const batch = items.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(item => fetchMdblistItemDetails(item, apiKey, config))
-      );
-      enrichedItems.push(...batchResults);
+    // Fetch items one-by-one instead of in batches
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item) continue;
 
-      if (i + batchSize < items.length) {
-        await new Promise(r => setTimeout(r, 500));
+      try {
+        const enrichedItem = await fetchMdblistItemDetails(item, apiKey, config);
+        enrichedItems.push(enrichedItem);
+
+        // Log progress every 50 items
+        if (enrichedItems.length % 50 === 0) {
+          console.log(`MDBList: Enriched ${enrichedItems.length}/${items.length} items`);
+        }
+
+        // Small delay between items to avoid overwhelming the API
+        if (i < items.length - 1) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+      } catch (err) {
+        console.warn(`Failed to enrich item ${i}:`, (err as Error).message);
+        // Continue with next item instead of failing
       }
     }
 
     const withPosters = enrichedItems.filter(item => item.posterPath);
     const withoutPosters = enrichedItems.filter(item => !item.posterPath);
-    console.log(`MDBList: Enriched ${enrichedItems.length} items (${withPosters.length} with posters, ${withoutPosters.length} without)`);
-    if (withoutPosters.length > 0 && withoutPosters.length <= 10) {
-      console.log('Items without posters:', withoutPosters.map(i => ({ title: i.title, tmdbId: i.tmdbId, imdbId: i.imdbId })));
-    }
+    console.log(`MDBList: Successfully enriched ${enrichedItems.length} items (${withPosters.length} with posters, ${withoutPosters.length} without)`);
     return enrichedItems;
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
@@ -935,4 +964,199 @@ async function refreshFromTrakt(
       ratingCount: media?.votes || null,
     };
   });
+}
+
+// Background refresh helper - runs async without blocking request
+async function refreshCollectionInBackground(
+  fastify: FastifyInstance,
+  collectionId: string,
+  sourceType: string,
+  sourceId: string | undefined,
+  syncToEmbyOnRefresh: boolean
+): Promise<void> {
+  try {
+    const settings = await fastify.prisma.settings.findUnique({
+      where: { id: 'singleton' },
+    });
+    const mdblistApiKey = settings?.mdblistApiKey || fastify.config.external.mdblist.apiKey;
+
+    let totalItems = 0;
+
+    // For MDBList, fetch items one-by-one for progressive population
+    if (sourceType === 'MDBLIST') {
+      totalItems = await refreshMdblistProgressive(
+        fastify,
+        collectionId,
+        sourceId!,
+        mdblistApiKey,
+        syncToEmbyOnRefresh
+      );
+    } else if (['TRAKT_LIST', 'TRAKT_WATCHLIST', 'TRAKT_COLLECTION'].includes(sourceType)) {
+      const collection = await fastify.prisma.collection.findUnique({
+        where: { id: collectionId },
+      });
+      if (collection) {
+        const items = await refreshFromTrakt(collection, settings, fastify.config);
+        if (items.length > 0) {
+          await fastify.prisma.collectionItem.createMany({
+            data: items.map((item) => ({
+              collectionId,
+              ...item,
+            })),
+          });
+          totalItems = items.length;
+        }
+      }
+    }
+
+    if (totalItems > 0) {
+      await fastify.prisma.collection.update({
+        where: { id: collectionId },
+        data: { lastSyncAt: new Date() },
+      });
+
+      if (syncToEmbyOnRefresh) {
+        await syncCollections({
+          prisma: fastify.prisma,
+          collectionId,
+        });
+      }
+
+      fastify.log.info(`Background refresh completed for collection ${collectionId}: ${totalItems} items`);
+    }
+  } catch (error) {
+    fastify.log.error(`Background refresh failed for collection ${collectionId}: ${(error as Error).message}`);
+  }
+}
+
+// Progressive refresh for MDBList - adds items one by one
+async function refreshMdblistProgressive(
+  fastify: FastifyInstance,
+  collectionId: string,
+  listId: string,
+  apiKey: string | undefined,
+  syncToEmbyOnRefresh: boolean
+): Promise<number> {
+  if (!apiKey) {
+    throw new Error('MDBList API key not configured');
+  }
+
+  try {
+    const response = await fetch(
+      `${fastify.config.external.mdblist.baseUrl}/lists/${listId}/items?apikey=${apiKey}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`MDBList API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    let items: MDBListItem[];
+    if (Array.isArray(data)) {
+      items = data;
+    } else if (data.items && Array.isArray(data.items)) {
+      items = data.items;
+    } else if (data.movies && Array.isArray(data.movies)) {
+      items = data.movies;
+    } else if (data.shows && Array.isArray(data.shows)) {
+      items = data.shows;
+    } else {
+      throw new Error(`MDBList API returned unexpected format`);
+    }
+
+    fastify.log.info(`MDBList: Starting progressive fetch of ${items.length} items for collection ${collectionId}`);
+
+    let addedCount = 0;
+    const seenTmdbIds = new Set<string>();
+
+    // Process items one by one
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item) continue;
+
+      // Check if collection still exists (might have been deleted)
+      if (i % 50 === 0) {
+        const collectionExists = await fastify.prisma.collection.findUnique({
+          where: { id: collectionId },
+          select: { id: true },
+        });
+        if (!collectionExists) {
+          fastify.log.info(`Collection ${collectionId} was deleted, stopping refresh`);
+          return addedCount;
+        }
+      }
+
+      try {
+        const enrichedItem = await fetchMdblistItemDetails(item, apiKey, fastify.config);
+
+        // Skip duplicates (same tmdbId in the list)
+        if (enrichedItem.tmdbId && seenTmdbIds.has(enrichedItem.tmdbId)) {
+          continue;
+        }
+        if (enrichedItem.tmdbId) {
+          seenTmdbIds.add(enrichedItem.tmdbId);
+        }
+
+        // For items with tmdbId, use upsert to handle duplicates
+        // For items without tmdbId, use create (they can't be duplicates by tmdbId)
+        if (enrichedItem.tmdbId) {
+          await fastify.prisma.collectionItem.upsert({
+            where: {
+              collectionId_tmdbId: {
+                collectionId,
+                tmdbId: enrichedItem.tmdbId,
+              },
+            },
+            create: {
+              collectionId,
+              ...enrichedItem,
+            },
+            update: {
+              ...enrichedItem,
+            },
+          });
+        } else {
+          await fastify.prisma.collectionItem.create({
+            data: {
+              collectionId,
+              ...enrichedItem,
+            },
+          });
+        }
+
+        addedCount++;
+
+        // Log progress every 10 items
+        if (addedCount % 10 === 0) {
+          fastify.log.debug(`MDBList: Added ${addedCount}/${items.length} items to collection ${collectionId}`);
+        }
+
+        // Small delay between items to avoid overwhelming the API/database
+        if (i < items.length - 1) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+      } catch (itemError) {
+        const errorMsg = (itemError as Error).message;
+        // Only log if it's not a foreign key error (collection deleted)
+        if (!errorMsg.includes('Foreign key')) {
+          fastify.log.warn(`Failed to add item ${i + 1} to collection ${collectionId}: ${errorMsg}`);
+        } else {
+          fastify.log.info(`Collection ${collectionId} was deleted, stopping refresh`);
+          return addedCount;
+        }
+      }
+    }
+
+    fastify.log.info(`MDBList: Successfully added ${addedCount}/${items.length} items to collection ${collectionId}`);
+    return addedCount;
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      const networkError = new Error(
+        `Network error: Failed to connect to MDBList API at ${fastify.config.external.mdblist.baseUrl}`
+      );
+      throw networkError;
+    }
+    throw error;
+  }
 }

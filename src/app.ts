@@ -5,6 +5,7 @@ import multipart from '@fastify/multipart';
 import staticFiles from '@fastify/static';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 import type { FastifyInstance, FastifyRequest, FastifyReply, FastifyError } from 'fastify';
 import config from './config/index.js';
 import prismaPlugin from './plugins/prisma.js';
@@ -162,8 +163,9 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
     api.register(settingsRoutes, { prefix: '/settings' });
   }, { prefix: '/api/v1' });
 
-  if (config.server.env === 'production') {
-    const distPath = join(__dirname, '..', 'dist');
+  // Serve static files and SPA fallback if dist folder exists
+  const distPath = join(__dirname, '..', 'dist');
+  if (existsSync(distPath)) {
     await fastify.register(staticFiles, {
       root: distPath,
       prefix: '/',
