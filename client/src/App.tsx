@@ -2,10 +2,13 @@ import { ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { OnboardingProvider } from './contexts/OnboardingContext';
 import { ToastProvider } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { SettingsLayout } from './components/SettingsLayout';
+import { OnboardingChecklist, OnboardingFloatingButton } from './components/OnboardingChecklist';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -16,6 +19,7 @@ import SettingsGeneral from './pages/settings/SettingsGeneral';
 import SettingsEmby from './pages/settings/SettingsEmby';
 import SettingsDownloaders from './pages/settings/SettingsDownloaders';
 import SettingsUsers from './pages/settings/SettingsUsers';
+import SettingsAppearance from './pages/settings/SettingsAppearance';
 import './styles/main.css';
 
 const queryClient = new QueryClient({
@@ -135,6 +139,7 @@ function AppRoutes() {
       >
         <Route index element={<Navigate to="/settings/general" replace />} />
         <Route path="general" element={<SettingsGeneral />} />
+        <Route path="appearance" element={<SettingsAppearance />} />
         <Route path="emby" element={<SettingsEmby />} />
         <Route path="downloaders" element={<SettingsDownloaders />} />
         <Route path="users" element={<SettingsUsers />} />
@@ -149,15 +154,21 @@ function AppRoutes() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <ErrorBoundary>
-          <ToastProvider>
-            <AuthProvider>
-              <AppRoutes />
-            </AuthProvider>
-          </ToastProvider>
-        </ErrorBoundary>
-      </BrowserRouter>
+      <ThemeProvider>
+        <BrowserRouter>
+          <ErrorBoundary>
+            <ToastProvider>
+              <AuthProvider>
+                <OnboardingProvider>
+                  <AppRoutes />
+                  <OnboardingChecklist />
+                  <OnboardingFloatingButton />
+                </OnboardingProvider>
+              </AuthProvider>
+            </ToastProvider>
+          </ErrorBoundary>
+        </BrowserRouter>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

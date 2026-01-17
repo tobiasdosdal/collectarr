@@ -15,6 +15,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import SampleCollectionsGrid from '../components/SampleCollectionsGrid';
 
 interface Collection {
   id: string;
@@ -207,16 +208,19 @@ const Dashboard: FC = () => {
         </div>
         
         {collections.length === 0 ? (
-          <Card className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="p-4 rounded-full bg-secondary/50 mb-4">
-              <FolderOpen size={32} className="text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">No collections yet</h3>
-            <p className="text-muted-foreground mb-6 max-w-sm">Create your first collection to get started</p>
-            <Button asChild>
-              <Link to="/browse">Browse Sources</Link>
-            </Button>
-          </Card>
+          <div className="space-y-6">
+            <Card className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="p-4 rounded-full bg-secondary/50 mb-4">
+                <FolderOpen size={32} className="text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">No collections yet</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm">Create your first collection or try a sample collection to explore features</p>
+              <Button asChild>
+                <Link to="/browse">Browse Sources</Link>
+              </Button>
+            </Card>
+            <SampleCollectionsGrid onCollectionAdded={loadData} compact />
+          </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {collections.slice(0, 4).map((collection) => (

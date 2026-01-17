@@ -41,6 +41,9 @@ import imageRoutes from './modules/images/routes.js';
 // Global settings
 import settingsRoutes from './modules/settings/routes.js';
 
+// Sample collections
+import samplesRoutes from './modules/samples/routes.js';
+
 export async function buildApp(fastify: FastifyInstance): Promise<void> {
   fastify.decorate('config', config);
 
@@ -162,6 +165,8 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
     api.register(imageRoutes, { prefix: '/images' });
 
     api.register(settingsRoutes, { prefix: '/settings' });
+
+    api.register(samplesRoutes, { prefix: '/samples' });
   }, { prefix: '/api/v1' });
 
   // Serve static files and SPA fallback if dist folder exists

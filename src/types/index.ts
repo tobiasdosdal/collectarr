@@ -98,6 +98,23 @@ export interface JobScheduler {
   setEnabled(name: string, enabled: boolean): void;
 }
 
+export interface CollectionScheduleStatus {
+  collectionId: string;
+  cronExpression: string;
+  lastRun: Date | null;
+  nextRun: Date | null;
+}
+
+export interface CollectionScheduler {
+  setRefreshHandler(handler: (collectionId: string) => Promise<void>): void;
+  scheduleCollection(collection: import('@prisma/client').Collection): Promise<void>;
+  unscheduleCollection(collectionId: string): void;
+  initializeSchedules(): Promise<void>;
+  getScheduleStatus(): CollectionScheduleStatus[];
+  getCollectionSchedule(collectionId: string): { collectionId: string; cronExpression: string; lastRun: Date | null; nextRun: Date | null } | undefined;
+  stop(): void;
+}
+
 // ============================================================================
 // API Response Types
 // ============================================================================
@@ -212,6 +229,7 @@ export type FastifyInstanceTyped = import('fastify').FastifyInstance & {
   prisma: PrismaClient;
   config: AppConfig;
   scheduler: JobScheduler;
+  collectionScheduler: CollectionScheduler;
   authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   authenticateJwt: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   authenticateApiKey: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -223,6 +241,7 @@ declare module 'fastify' {
     prisma: PrismaClient;
     config: AppConfig;
     scheduler: JobScheduler;
+    collectionScheduler: CollectionScheduler;
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     authenticateJwt: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     authenticateApiKey: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;

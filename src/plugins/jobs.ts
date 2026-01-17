@@ -5,16 +5,49 @@
 
 import fp from 'fastify-plugin';
 import { getScheduler } from '../jobs/scheduler.js';
+import { getCollectionScheduler, resetCollectionScheduler } from '../jobs/collection-scheduler.js';
 import refreshCollectionsJob from '../jobs/refresh-collections.js';
 import { syncAllToEmby } from '../jobs/sync-to-emby.js';
 import cacheCleanupJob from '../jobs/cache-cleanup.js';
 import imageCacheQueueJob from '../jobs/image-cache-queue.js';
 import { stopCacheQueue } from '../utils/image-cache.js';
+import { createCollectionService } from '../modules/collections/service.js';
 import type { FastifyInstance } from 'fastify';
 
 async function jobsPlugin(fastify: FastifyInstance): Promise<void> {
   const scheduler = getScheduler(fastify);
+  const collectionScheduler = getCollectionScheduler(fastify);
 
+  // Set up the refresh handler for individual collection schedules
+  const collectionService = createCollectionService(fastify);
+  collectionScheduler.setRefreshHandler(async (collectionId: string) => {
+    const collection = await fastify.prisma.collection.findUnique({
+      where: { id: collectionId },
+    });
+
+    if (!collection || !collection.isEnabled || collection.sourceType === 'MANUAL') {
+      return;
+    }
+
+    // Check if it's time to refresh based on lastSyncAt and refreshIntervalHours
+    if (collection.lastSyncAt) {
+      const hoursSinceSync = (Date.now() - new Date(collection.lastSyncAt).getTime()) / (1000 * 60 * 60);
+      if (hoursSinceSync < collection.refreshIntervalHours * 0.9) {
+        // Allow 10% tolerance for timing
+        fastify.log.debug(`Skipping refresh for ${collection.name}, last synced ${hoursSinceSync.toFixed(1)} hours ago`);
+        return;
+      }
+    }
+
+    await collectionService.refreshCollection(
+      collectionId,
+      collection.sourceType,
+      collection.sourceId || undefined,
+      collection.syncToEmbyOnRefresh
+    );
+  });
+
+  // Keep the global refresh job as a fallback (runs hourly to catch any missed schedules)
   scheduler.register(
     'refresh-collections',
     '0 * * * *',
@@ -56,15 +89,22 @@ async function jobsPlugin(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.decorate('scheduler', scheduler);
+  fastify.decorate('collectionScheduler', collectionScheduler);
 
   fastify.addHook('onReady', async () => {
     scheduler.start();
     fastify.log.info('Job scheduler started');
+
+    // Initialize individual collection schedules
+    await collectionScheduler.initializeSchedules();
+    fastify.log.info('Collection scheduler initialized');
   });
 
   fastify.addHook('onClose', async () => {
     stopCacheQueue();
     scheduler.stop();
+    collectionScheduler.stop();
+    resetCollectionScheduler();
   });
 }
 

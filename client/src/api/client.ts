@@ -498,6 +498,50 @@ class ApiClient {
   logout(): void {
     this.setToken(null);
   }
+
+  // Onboarding
+  async getOnboardingStatus(): Promise<{
+    completed: boolean;
+    dismissed: boolean;
+    steps: Record<string, boolean>;
+  }> {
+    return this.request('/users/onboarding/status');
+  }
+
+  async completeOnboardingStep(stepId: string): Promise<{
+    success: boolean;
+    allCompleted: boolean;
+  }> {
+    return this.request('/users/onboarding/step', {
+      method: 'POST',
+      body: JSON.stringify({ stepId }),
+    });
+  }
+
+  async dismissOnboarding(): Promise<{ success: boolean }> {
+    return this.request('/users/onboarding/dismiss', {
+      method: 'POST',
+    });
+  }
+
+  async resetOnboarding(): Promise<{ success: boolean }> {
+    return this.request('/users/onboarding/reset', {
+      method: 'POST',
+    });
+  }
+
+  // Sample Collections
+  async getSampleCollections(): Promise<any> {
+    return this.request('/samples');
+  }
+
+  async getSampleCollection(sampleId: string): Promise<any> {
+    return this.request(`/samples/${sampleId}`);
+  }
+
+  async applySampleCollection(sampleId: string): Promise<any> {
+    return this.request(`/samples/${sampleId}/apply`, { method: 'POST' });
+  }
 }
 
 export const api = new ApiClient();

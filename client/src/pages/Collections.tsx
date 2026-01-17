@@ -1,6 +1,7 @@
 import { FC, useEffect, useState, useMemo, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import EmptyCollectionsState from '../components/EmptyCollectionsState';
 import api from '../api/client';
 import { useDebounce } from '../hooks/useDebounce';
 import {
@@ -370,20 +371,10 @@ const Collections: FC = () => {
       )}
 
       {collections.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <div className="w-20 h-20 rounded-2xl bg-secondary/50 flex items-center justify-center mb-6">
-              <FolderOpen size={36} className="text-muted-foreground" />
-            </div>
-            <h3>No collections yet</h3>
-            <p>
-              Collections let you sync lists from MDBList and Trakt to your Emby server
-            </p>
-            <Link to="/browse" className="btn btn-primary">
-              Browse Sources
-            </Link>
-          </div>
-        </div>
+        <EmptyCollectionsState
+          onCreateManual={() => setShowCreateModal(true)}
+          onCollectionAdded={loadCollections}
+        />
       ) : filteredCollections.length === 0 ? (
         <div className="card">
           <div className="empty-state">

@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { MobileBottomNav } from './MobileBottomNav';
+import { QuickThemeToggle } from './ThemeToggle';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -90,9 +92,10 @@ export function Layout({ children }: LayoutProps) {
             <span className="block text-sm font-medium truncate">{user?.email?.split('@')[0]}</span>
             <span className="block text-xs text-muted-foreground truncate">{user?.email}</span>
           </div>
+          <QuickThemeToggle />
         </div>
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           className="w-full justify-start text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/10"
           onClick={handleLogout}
         >
@@ -118,23 +121,29 @@ export function Layout({ children }: LayoutProps) {
           </div>
           <span className="font-bold">Collectarr</span>
         </div>
-        <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <Menu size={20} />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-[280px]">
-            <SidebarContent />
-          </SheetContent>
-        </Sheet>
+        <div className="flex items-center gap-1">
+          <QuickThemeToggle />
+          <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <Menu size={20} />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="p-0 w-[280px]">
+              <SidebarContent />
+            </SheetContent>
+          </Sheet>
+        </div>
       </div>
 
       <main className="flex-1 md:pl-[280px] w-full">
-        <div className="p-6 md:p-8 mt-16 md:mt-0 max-w-7xl mx-auto w-full">
+        <div className="p-4 sm:p-6 md:p-8 mt-16 md:mt-0 pb-20 md:pb-8 max-w-7xl mx-auto w-full main-content-with-bottom-nav">
           {children}
         </div>
       </main>
+
+      {/* Mobile Bottom Navigation */}
+      <MobileBottomNav />
     </div>
   );
 }

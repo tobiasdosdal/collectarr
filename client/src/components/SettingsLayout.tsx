@@ -7,6 +7,7 @@ import {
   DownloadCloud,
   Users as UsersIcon,
   ChevronRight,
+  Palette,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +23,11 @@ const settingsNavItems: SettingsNavItem[] = [
     path: '/settings/general',
     icon: Key,
     label: 'General',
+  },
+  {
+    path: '/settings/appearance',
+    icon: Palette,
+    label: 'Appearance',
   },
   {
     path: '/settings/emby',
@@ -58,6 +64,35 @@ export function SettingsLayout() {
             Configure your integrations and sync options
           </p>
         </div>
+      </div>
+
+      {/* Mobile Settings Tabs */}
+      <div className="lg:hidden mb-6">
+        <nav className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+          {settingsNavItems.map(({ path, icon: Icon, label, adminOnly }) => {
+            if (adminOnly && !user?.isAdmin) {
+              return null;
+            }
+
+            const isActive = location.pathname === path;
+
+            return (
+              <Link
+                key={path}
+                to={path}
+                className={cn(
+                  'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all',
+                  isActive
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary/50 text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Icon size={14} />
+                <span>{label}</span>
+              </Link>
+            );
+          })}
+        </nav>
       </div>
 
       <div className="flex gap-6">
