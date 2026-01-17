@@ -7,12 +7,18 @@ A self-hosted media collection manager that syncs curated lists with your Emby l
 ## Features
 
 - **Emby Integration** - Connect your Emby server to track which items from your collections are in your library
-- **List Imports** - Import collections from MDBList, Trakt, and Letterboxd
+- **List Imports** - Import collections from MDBList and Trakt
 - **Radarr/Sonarr Integration** - Request missing movies and TV shows directly to your download managers
 - **Multi-User Support** - Multiple users with admin/user roles
 - **Automatic Sync** - Schedule collection syncs to keep everything up to date
 - **Encrypted Secrets** - API keys are encrypted at rest in the database
 - **Dark Cinema UI** - Sleek, cinematic interface designed for media enthusiasts
+
+## Screenshots
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+![Settings](docs/screenshots/settings.png)
 
 ## Quick Start
 
