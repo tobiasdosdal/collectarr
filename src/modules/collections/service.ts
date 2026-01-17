@@ -117,10 +117,11 @@ export class CollectionService {
         items = data;
       } else if (data.items && Array.isArray(data.items)) {
         items = data.items;
-      } else if (data.movies && Array.isArray(data.movies)) {
-        items = data.movies;
-      } else if (data.shows && Array.isArray(data.shows)) {
-        items = data.shows;
+      } else if (data.movies || data.shows) {
+        // Combine movies and shows if both exist
+        const movies = Array.isArray(data.movies) ? data.movies : [];
+        const shows = Array.isArray(data.shows) ? data.shows : [];
+        items = [...movies, ...shows];
       } else {
         throw new Error(`MDBList API returned unexpected format`);
       }

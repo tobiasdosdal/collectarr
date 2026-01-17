@@ -23,6 +23,7 @@ export interface MDBListItem {
 export interface MDBListDetail {
   tmdbid?: number;
   traktid?: number;
+  tvdbid?: number;
   year?: number;
   score?: number;
   imdbrating?: number;

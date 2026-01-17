@@ -140,6 +140,7 @@ const CollectionDetail: FC = () => {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState<boolean>(false);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const hasAutoStartedPolling = useRef<boolean>(false);
 
   // Start polling when refresh button is clicked
   const startPolling = () => {
@@ -148,8 +149,6 @@ const CollectionDetail: FC = () => {
     setIsPolling(true);
     let noChangeCount = 0;
     let lastItemCount = collection?.items?.length || 0;
-    const pollStartTime = Date.now();
-    const minPollDuration = 120000; // Keep polling for at least 2 minutes
 
     pollIntervalRef.current = setInterval(async () => {
       try {
@@ -158,14 +157,11 @@ const CollectionDetail: FC = () => {
         setCollection(updatedCollection);
 
         const currentItemCount = updatedCollection.items?.length || 0;
-        const elapsedTime = Date.now() - pollStartTime;
 
         if (currentItemCount === lastItemCount) {
           noChangeCount++;
-          // Stop polling only if:
-          // 1. Minimum poll duration has passed AND
-          // 2. No new items for 15+ seconds (15 consecutive polls)
-          if (elapsedTime >= minPollDuration && noChangeCount >= 15 && pollIntervalRef.current) {
+          // Stop polling after 5 seconds of no changes
+          if (noChangeCount >= 5 && pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = undefined;
             setIsPolling(false);
@@ -193,10 +189,9 @@ const CollectionDetail: FC = () => {
 
   useEffect(() => {
     if (id) {
-      loadCollection().then(() => {
-        // Auto-start polling if collection is empty and not manual (newly created)
-        // This ensures real-time updates when navigating to a new collection
-      });
+      // Reset auto-start flag when navigating to a new collection
+      hasAutoStartedPolling.current = false;
+      loadCollection();
       loadStats();
       loadSyncLogs();
       loadDownloadServers();
@@ -204,12 +199,19 @@ const CollectionDetail: FC = () => {
     }
   }, [id]);
 
-  // Auto-start polling for newly created collections (empty, non-manual)
+  // Auto-start polling for newly created collections (empty, non-manual) - only once
   useEffect(() => {
-    if (collection && !loading && collection.sourceType !== 'MANUAL' && collection.items?.length === 0) {
+    if (
+      collection &&
+      !loading &&
+      !hasAutoStartedPolling.current &&
+      collection.sourceType !== 'MANUAL' &&
+      (collection.items?.length || 0) === 0
+    ) {
+      hasAutoStartedPolling.current = true;
       startPolling();
     }
-  }, [collection?.id, collection?.items?.length, loading]);
+  }, [collection?.id, loading]);
 
   const loadEmbyServers = async (): Promise<void> => {
     try {
@@ -915,6 +917,7 @@ const AddItemModal: FC<AddItemModalProps> = ({ collectionId, onClose, onAdded })
   const [year, setYear] = useState<string>('');
   const [imdbId, setImdbId] = useState<string>('');
   const [tmdbId, setTmdbId] = useState<string>('');
+  const [tvdbId, setTvdbId] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
@@ -930,6 +933,7 @@ const AddItemModal: FC<AddItemModalProps> = ({ collectionId, onClose, onAdded })
         year: year ? parseInt(year, 10) : null,
         imdbId: imdbId || null,
         tmdbId: tmdbId || null,
+        tvdbId: tvdbId || null,
       });
       onAdded(item);
     } catch (err: any) {
@@ -1016,6 +1020,18 @@ const AddItemModal: FC<AddItemModalProps> = ({ collectionId, onClose, onAdded })
               placeholder="12345"
             />
           </div>
+
+          {mediaType === 'SHOW' && (
+            <div className="form-group">
+              <label>TVDb ID (required for Sonarr)</label>
+              <input
+                type="text"
+                value={tvdbId}
+                onChange={(e) => setTvdbId(e.target.value)}
+                placeholder="12345"
+              />
+            </div>
+          )}
 
           <div className="modal-actions">
             <button type="button" className="btn btn-secondary" onClick={onClose}>
