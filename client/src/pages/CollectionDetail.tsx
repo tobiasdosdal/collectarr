@@ -62,6 +62,12 @@ interface EmbyServer {
   isDefault: boolean;
 }
 
+interface ScheduleInfo {
+  cronExpression: string;
+  lastRun: string | null;
+  nextRun: string | null;
+}
+
 interface Collection {
   id: string;
   name: string;
@@ -69,9 +75,12 @@ interface Collection {
   posterPath?: string;
   items: CollectionItem[];
   refreshIntervalHours?: number;
+  refreshTime?: string | null;
   syncToEmbyOnRefresh?: boolean;
   removeFromEmby?: boolean;
+  deleteFromEmbyOnDelete?: boolean;
   embyServerIds?: string[];
+  scheduleInfo?: ScheduleInfo | null;
 }
 
 interface CollectionSettingsModalProps {
@@ -532,6 +541,12 @@ const CollectionDetail: FC = () => {
                 <span className="ml-2 text-primary animate-pulse">• Updating...</span>
               )}
             </p>
+            {collection.scheduleInfo?.nextRun && (
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                <Clock size={12} />
+                Next refresh: {new Date(collection.scheduleInfo.nextRun).toLocaleString()}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -688,7 +703,7 @@ const CollectionDetail: FC = () => {
         </div>
       ) : (
         <div className="items-grid">
-          {collection.items
+          {(collection.items || [])
             .filter((item) => {
               if (filter === 'inLibrary') return item.inEmby;
               if (filter === 'missing') return !item.inEmby;
@@ -897,7 +912,8 @@ const CollectionDetail: FC = () => {
           embyServers={embyServers}
           onClose={() => setShowSettingsModal(false)}
           onSaved={(updated) => {
-            setCollection(updated);
+            // Merge updated settings with existing collection, preserving items
+            setCollection({ ...collection, ...updated, items: collection.items });
             setShowSettingsModal(false);
           }}
         />
@@ -1060,9 +1076,10 @@ const CollectionSettingsModal: FC<CollectionSettingsModalProps> = ({ collection,
       ? 'days'
       : 'hours'
   );
-  const [refreshTime, setRefreshTime] = useState<string>('00:00');
+  const [refreshTime, setRefreshTime] = useState<string>(collection.refreshTime || '00:00');
   const [syncToEmbyOnRefresh, setSyncToEmbyOnRefresh] = useState<boolean>(collection.syncToEmbyOnRefresh ?? true);
   const [removeFromEmby, setRemoveFromEmby] = useState<boolean>(collection.removeFromEmby ?? false);
+  const [deleteFromEmbyOnDelete, setDeleteFromEmbyOnDelete] = useState<boolean>(collection.deleteFromEmbyOnDelete ?? false);
   const [selectedEmbyServerIds, setSelectedEmbyServerIds] = useState<string[]>(
     collection.embyServerIds || embyServers.map(s => s.id)
   );
@@ -1081,8 +1098,10 @@ const CollectionSettingsModal: FC<CollectionSettingsModalProps> = ({ collection,
 
       const updated = await api.updateCollection(collection.id, {
         refreshIntervalHours,
+        refreshTime,
         syncToEmbyOnRefresh,
         removeFromEmby,
+        deleteFromEmbyOnDelete,
         embyServerIds: selectedEmbyServerIds,
       });
       onSaved(updated as Collection);
@@ -1211,6 +1230,23 @@ const CollectionSettingsModal: FC<CollectionSettingsModalProps> = ({ collection,
                 <span className="font-medium">Remove items from Emby collection</span>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Remove items that are no longer in the source list from the Emby collection
+                </p>
+              </div>
+            </label>
+          </div>
+
+          <div className="form-group mt-3">
+            <label className="flex items-center gap-3 cursor-pointer py-2">
+              <input
+                type="checkbox"
+                checked={deleteFromEmbyOnDelete}
+                onChange={(e) => setDeleteFromEmbyOnDelete(e.target.checked)}
+                className="w-5 h-5 rounded border-border accent-primary cursor-pointer"
+              />
+              <div>
+                <span className="font-medium">Delete from Emby when collection is deleted</span>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Also delete the collection from Emby when you delete it from Collectarr
                 </p>
               </div>
             </label>

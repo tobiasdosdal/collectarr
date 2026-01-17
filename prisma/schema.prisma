@@ -14,6 +14,9 @@ model User {
   passwordHash String
   apiKey       String    @unique @default(uuid())
   isAdmin      Boolean   @default(false)
+  onboardingCompleted Boolean @default(false)
+  onboardingDismissedAt DateTime?
+  onboardingSteps String?  // JSON string storing step completion status
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -44,9 +47,11 @@ model Collection {
   posterPath   String?
   isEnabled    Boolean   @default(true)
   refreshIntervalHours Int       @default(24)
-  syncToEmbyOnRefresh  Boolean   @default(true)
-  removeFromEmby       Boolean   @default(true)
-  lastSyncAt           DateTime?
+  refreshTime          String?   // Preferred refresh time in HH:MM format (24-hour)
+  syncToEmbyOnRefresh    Boolean   @default(true)
+  removeFromEmby         Boolean   @default(true)
+  deleteFromEmbyOnDelete Boolean   @default(false)
+  lastSyncAt             DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
