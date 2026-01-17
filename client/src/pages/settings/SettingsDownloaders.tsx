@@ -1,6 +1,7 @@
 import { FC, useEffect, useState } from 'react';
 import api from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
+import { ConfirmationModal } from '../../components/ConfirmationModal';
 import {
   Server,
   Plus,
@@ -69,6 +70,7 @@ const SettingsDownloaders: FC = () => {
   const [sonarrServers, setSonarrServers] = useState<SonarrServer[]>([]);
   const [showAddSonarr, setShowAddSonarr] = useState<boolean>(false);
   const [editSonarrServer, setEditSonarrServer] = useState<SonarrServer | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'radarr' | 'sonarr'; id: string; name: string } | null>(null);
 
   useEffect(() => {
     loadRadarrServers();
@@ -93,25 +95,25 @@ const SettingsDownloaders: FC = () => {
     }
   };
 
-  const deleteRadarrServer = async (id: string, name: string): Promise<void> => {
-    if (!confirm(`Delete Radarr server "${name}"?`)) return;
-
+  const deleteRadarrServer = async (id: string): Promise<void> => {
     try {
       await api.deleteRadarrServer(id);
       setRadarrServers(radarrServers.filter((s) => s.id !== id));
     } catch (err: any) {
       console.error('Failed to delete Radarr server:', err);
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
-  const deleteSonarrServer = async (id: string, name: string): Promise<void> => {
-    if (!confirm(`Delete Sonarr server "${name}"?`)) return;
-
+  const deleteSonarrServer = async (id: string): Promise<void> => {
     try {
       await api.deleteSonarrServer(id);
       setSonarrServers(sonarrServers.filter((s) => s.id !== id));
     } catch (err: any) {
       console.error('Failed to delete Sonarr server:', err);
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -144,9 +146,19 @@ const SettingsDownloaders: FC = () => {
             <div className="w-14 h-14 rounded-xl bg-secondary/50 flex items-center justify-center mx-auto mb-4">
               <Server size={24} className="text-muted-foreground" />
             </div>
-            <p className="text-muted-foreground text-sm">
-              No Radarr servers configured. Add a server to request movies.
+            <h4 className="text-sm font-medium mb-2">No Radarr Servers Connected</h4>
+            <p className="text-muted-foreground text-sm mb-4 max-w-sm mx-auto">
+              Connect Radarr to automatically request movies from your collections. Missing movies will be added to your download queue.
             </p>
+            {user?.isAdmin && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowAddRadarr(true)}
+              >
+                <Plus size={14} />
+                Add Radarr Server
+              </button>
+            )}
           </div>
         ) : (
           <div className="mt-4">
@@ -175,7 +187,7 @@ const SettingsDownloaders: FC = () => {
                     </button>
                     <button
                       className="btn btn-ghost btn-sm"
-                      onClick={() => deleteRadarrServer(server.id, server.name)}
+                      onClick={() => setDeleteTarget({ type: 'radarr', id: server.id, name: server.name })}
                       title="Delete server"
                     >
                       <Trash2 size={14} />
@@ -215,9 +227,19 @@ const SettingsDownloaders: FC = () => {
             <div className="w-14 h-14 rounded-xl bg-secondary/50 flex items-center justify-center mx-auto mb-4">
               <Server size={24} className="text-muted-foreground" />
             </div>
-            <p className="text-muted-foreground text-sm">
-              No Sonarr servers configured. Add a server to request TV shows.
+            <h4 className="text-sm font-medium mb-2">No Sonarr Servers Connected</h4>
+            <p className="text-muted-foreground text-sm mb-4 max-w-sm mx-auto">
+              Connect Sonarr to automatically request TV shows from your collections. Missing shows will be added to your download queue.
             </p>
+            {user?.isAdmin && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowAddSonarr(true)}
+              >
+                <Plus size={14} />
+                Add Sonarr Server
+              </button>
+            )}
           </div>
         ) : (
           <div className="mt-4">
@@ -246,7 +268,7 @@ const SettingsDownloaders: FC = () => {
                     </button>
                     <button
                       className="btn btn-ghost btn-sm"
-                      onClick={() => deleteSonarrServer(server.id, server.name)}
+                      onClick={() => setDeleteTarget({ type: 'sonarr', id: server.id, name: server.name })}
                       title="Delete server"
                     >
                       <Trash2 size={14} />
@@ -298,6 +320,17 @@ const SettingsDownloaders: FC = () => {
             setSonarrServers(sonarrServers.map((s) => s.id === updated.id ? updated : s));
             setEditSonarrServer(null);
           }}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmationModal
+          title={`Delete ${deleteTarget.type === 'radarr' ? 'Radarr' : 'Sonarr'} Server`}
+          message={`Are you sure you want to delete "${deleteTarget.name}"? This action cannot be undone.`}
+          confirmText="Delete"
+          isDangerous
+          onConfirm={() => deleteTarget.type === 'radarr' ? deleteRadarrServer(deleteTarget.id) : deleteSonarrServer(deleteTarget.id)}
+          onCancel={() => setDeleteTarget(null)}
         />
       )}
     </>
@@ -734,81 +767,93 @@ const EditRadarrServerModal: FC<EditRadarrServerModalProps> = ({ server, onClose
         <form onSubmit={handleSubmit}>
           {error && <div className="error-message mb-4">{error}</div>}
 
-          <div className="form-group">
-            <label>Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My Radarr Server"
-              required
-            />
-          </div>
+          {/* Connection Settings */}
+          <div className="mb-6">
+            <h4 className="text-sm font-medium mb-3 text-muted-foreground">Connection Settings</h4>
 
-          <div className="form-group">
-            <label>URL</label>
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="http://192.168.1.100:7878"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label>API Key</label>
-            <input
-              type="text"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Leave blank to keep current key"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Only enter a new key if you want to change it
-            </p>
-          </div>
-
-          <div className="form-group">
-            <label>Quality Profile</label>
-            <select
-              value={selectedProfile}
-              onChange={(e) => setSelectedProfile(e.target.value ? parseInt(e.target.value) : '')}
-              disabled={loadingOptions}
-            >
-              <option value="">Select a profile</option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Root Folder</label>
-            <select
-              value={selectedFolder}
-              onChange={(e) => setSelectedFolder(e.target.value)}
-              disabled={loadingOptions}
-            >
-              <option value="">Select a folder</option>
-              {rootFolders.map((f) => (
-                <option key={f.id} value={f.path}>
-                  {f.path} ({(f.freeSpace / 1024 / 1024 / 1024).toFixed(1)} GB free)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <div className="form-group">
+              <label>Name</label>
               <input
-                type="checkbox"
-                checked={isDefault}
-                onChange={(e) => setIsDefault(e.target.checked)}
-                className="rounded"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="My Radarr Server"
+                required
               />
-              <span>Set as default server</span>
-            </label>
+            </div>
+
+            <div className="form-group">
+              <label>URL</label>
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="http://192.168.1.100:7878"
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label>API Key</label>
+              <input
+                type="text"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Leave blank to keep current key"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Only enter a new key if you want to change it
+              </p>
+            </div>
+          </div>
+
+          {/* Default Settings */}
+          <div className="mb-2 pt-4 border-t border-border/30">
+            <h4 className="text-sm font-medium mb-1 text-muted-foreground">Default Settings</h4>
+            <p className="text-xs text-muted-foreground mb-3">
+              These defaults are used when requesting movies from collections
+            </p>
+
+            <div className="form-group">
+              <label>Quality Profile</label>
+              <select
+                value={selectedProfile}
+                onChange={(e) => setSelectedProfile(e.target.value ? parseInt(e.target.value) : '')}
+                disabled={loadingOptions}
+              >
+                <option value="">Select a profile</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Root Folder</label>
+              <select
+                value={selectedFolder}
+                onChange={(e) => setSelectedFolder(e.target.value)}
+                disabled={loadingOptions}
+              >
+                <option value="">Select a folder</option>
+                {rootFolders.map((f) => (
+                  <option key={f.id} value={f.path}>
+                    {f.path} ({(f.freeSpace / 1024 / 1024 / 1024).toFixed(1)} GB free)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isDefault}
+                  onChange={(e) => setIsDefault(e.target.checked)}
+                />
+                <span className="text-sm">Set as default server</span>
+              </label>
+            </div>
           </div>
 
           <div className="modal-actions">
@@ -907,81 +952,93 @@ const EditSonarrServerModal: FC<EditSonarrServerModalProps> = ({ server, onClose
         <form onSubmit={handleSubmit}>
           {error && <div className="error-message mb-4">{error}</div>}
 
-          <div className="form-group">
-            <label>Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My Sonarr Server"
-              required
-            />
-          </div>
+          {/* Connection Settings */}
+          <div className="mb-6">
+            <h4 className="text-sm font-medium mb-3 text-muted-foreground">Connection Settings</h4>
 
-          <div className="form-group">
-            <label>URL</label>
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="http://192.168.1.100:8989"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label>API Key</label>
-            <input
-              type="text"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Leave blank to keep current key"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Only enter a new key if you want to change it
-            </p>
-          </div>
-
-          <div className="form-group">
-            <label>Quality Profile</label>
-            <select
-              value={selectedProfile}
-              onChange={(e) => setSelectedProfile(e.target.value ? parseInt(e.target.value) : '')}
-              disabled={loadingOptions}
-            >
-              <option value="">Select a profile</option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Root Folder</label>
-            <select
-              value={selectedFolder}
-              onChange={(e) => setSelectedFolder(e.target.value)}
-              disabled={loadingOptions}
-            >
-              <option value="">Select a folder</option>
-              {rootFolders.map((f) => (
-                <option key={f.id} value={f.path}>
-                  {f.path} ({(f.freeSpace / 1024 / 1024 / 1024).toFixed(1)} GB free)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <div className="form-group">
+              <label>Name</label>
               <input
-                type="checkbox"
-                checked={isDefault}
-                onChange={(e) => setIsDefault(e.target.checked)}
-                className="rounded"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="My Sonarr Server"
+                required
               />
-              <span>Set as default server</span>
-            </label>
+            </div>
+
+            <div className="form-group">
+              <label>URL</label>
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="http://192.168.1.100:8989"
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label>API Key</label>
+              <input
+                type="text"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Leave blank to keep current key"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Only enter a new key if you want to change it
+              </p>
+            </div>
+          </div>
+
+          {/* Default Settings */}
+          <div className="mb-2 pt-4 border-t border-border/30">
+            <h4 className="text-sm font-medium mb-1 text-muted-foreground">Default Settings</h4>
+            <p className="text-xs text-muted-foreground mb-3">
+              These defaults are used when requesting TV shows from collections
+            </p>
+
+            <div className="form-group">
+              <label>Quality Profile</label>
+              <select
+                value={selectedProfile}
+                onChange={(e) => setSelectedProfile(e.target.value ? parseInt(e.target.value) : '')}
+                disabled={loadingOptions}
+              >
+                <option value="">Select a profile</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Root Folder</label>
+              <select
+                value={selectedFolder}
+                onChange={(e) => setSelectedFolder(e.target.value)}
+                disabled={loadingOptions}
+              >
+                <option value="">Select a folder</option>
+                {rootFolders.map((f) => (
+                  <option key={f.id} value={f.path}>
+                    {f.path} ({(f.freeSpace / 1024 / 1024 / 1024).toFixed(1)} GB free)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isDefault}
+                  onChange={(e) => setIsDefault(e.target.checked)}
+                />
+                <span className="text-sm">Set as default server</span>
+              </label>
+            </div>
           </div>
 
           <div className="modal-actions">

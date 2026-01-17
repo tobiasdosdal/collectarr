@@ -1,5 +1,6 @@
 import { FC, useState, useEffect } from 'react';
 import { useToast } from '../../components/Toast';
+import { ConfirmationModal } from '../../components/ConfirmationModal';
 import api from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -14,6 +15,8 @@ import {
   Play,
 } from 'lucide-react';
 
+type ConfirmAction = 'regenerateApiKey' | 'disconnectTrakt' | 'disconnectMdblist' | 'disconnectTmdb' | null;
+
 const SettingsGeneral: FC = () => {
   const { user, refreshUser } = useAuth();
   const { addToast } = useToast();
@@ -25,6 +28,7 @@ const SettingsGeneral: FC = () => {
   const [tmdbApiKeyMasked, setTmdbApiKeyMasked] = useState<string | null>(null);
   const [tmdbValidationError, setTmdbValidationError] = useState<string>('');
   const [loading, setLoading] = useState<Record<string, boolean>>({});
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
 
   const copyApiKey = async (): Promise<void> => {
     await navigator.clipboard.writeText(user?.apiKey || '');
@@ -33,8 +37,6 @@ const SettingsGeneral: FC = () => {
   };
 
   const regenerateApiKey = async (): Promise<void> => {
-    if (!confirm('Regenerate API key? External integrations using this key will need to be updated.')) return;
-
     setLoading(prev => ({ ...prev, apiKey: true }));
     try {
       await api.regenerateApiKey();
@@ -44,6 +46,7 @@ const SettingsGeneral: FC = () => {
       addToast(`Failed to regenerate: ${err.message}`, 'error');
     } finally {
       setLoading(prev => ({ ...prev, apiKey: false }));
+      setConfirmAction(null);
     }
   };
 
@@ -59,8 +62,6 @@ const SettingsGeneral: FC = () => {
   };
 
   const disconnectTrakt = async (): Promise<void> => {
-    if (!confirm('Disconnect Trakt? Your Trakt collections will stop syncing.')) return;
-
     setLoading(prev => ({ ...prev, trakt: true }));
     try {
       await api.disconnectTrakt();
@@ -70,6 +71,7 @@ const SettingsGeneral: FC = () => {
       addToast(`Failed to disconnect: ${err.message}`, 'error');
     } finally {
       setLoading(prev => ({ ...prev, trakt: false }));
+      setConfirmAction(null);
     }
   };
 
@@ -94,8 +96,6 @@ const SettingsGeneral: FC = () => {
   };
 
   const disconnectMdblist = async (): Promise<void> => {
-    if (!confirm('Disconnect MDBList?')) return;
-
     setLoading(prev => ({ ...prev, mdblist: true }));
     try {
       await api.disconnectMdblist();
@@ -105,6 +105,7 @@ const SettingsGeneral: FC = () => {
       addToast(`Failed to disconnect: ${err.message}`, 'error');
     } finally {
       setLoading(prev => ({ ...prev, mdblist: false }));
+      setConfirmAction(null);
     }
   };
 
@@ -202,8 +203,6 @@ const SettingsGeneral: FC = () => {
   };
 
   const disconnectTmdb = async (): Promise<void> => {
-    if (!confirm('Disconnect TMDB?')) return;
-
     setLoading(prev => ({ ...prev, tmdb: true }));
     try {
       await api.disconnectTmdb();
@@ -214,6 +213,7 @@ const SettingsGeneral: FC = () => {
       addToast(`Failed to disconnect: ${err.message}`, 'error');
     } finally {
       setLoading(prev => ({ ...prev, tmdb: false }));
+      setConfirmAction(null);
     }
   };
 
@@ -245,7 +245,7 @@ const SettingsGeneral: FC = () => {
           </button>
           <button
             className="btn btn-secondary"
-            onClick={regenerateApiKey}
+            onClick={() => setConfirmAction('regenerateApiKey')}
             disabled={loading.apiKey}
             aria-label="Regenerate API key"
             aria-busy={loading.apiKey}
@@ -287,7 +287,7 @@ const SettingsGeneral: FC = () => {
             user?.traktConnected ? (
               <button
                 className="btn btn-danger btn-sm"
-                onClick={disconnectTrakt}
+                onClick={() => setConfirmAction('disconnectTrakt')}
                 disabled={loading.trakt}
               >
                 <Unlink size={14} />
@@ -331,7 +331,7 @@ const SettingsGeneral: FC = () => {
             user?.mdblistConnected ? (
               <button
                 className="btn btn-danger btn-sm"
-                onClick={disconnectMdblist}
+                onClick={() => setConfirmAction('disconnectMdblist')}
                 disabled={loading.mdblist}
               >
                 <Unlink size={14} />
@@ -442,7 +442,7 @@ const SettingsGeneral: FC = () => {
             user?.tmdbConnected ? (
               <button
                 className="btn btn-danger btn-sm"
-                onClick={disconnectTmdb}
+                onClick={() => setConfirmAction('disconnectTmdb')}
                 disabled={loading.tmdb}
               >
                 <Unlink size={14} />
@@ -518,6 +518,50 @@ const SettingsGeneral: FC = () => {
           )}
         </div>
       </div>
+
+      {confirmAction === 'regenerateApiKey' && (
+        <ConfirmationModal
+          title="Regenerate API Key"
+          message="Are you sure you want to regenerate your API key? External integrations using this key will need to be updated."
+          confirmText="Regenerate"
+          isDangerous
+          onConfirm={regenerateApiKey}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+
+      {confirmAction === 'disconnectTrakt' && (
+        <ConfirmationModal
+          title="Disconnect Trakt"
+          message="Are you sure you want to disconnect Trakt? Your Trakt collections will stop syncing."
+          confirmText="Disconnect"
+          isDangerous
+          onConfirm={disconnectTrakt}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+
+      {confirmAction === 'disconnectMdblist' && (
+        <ConfirmationModal
+          title="Disconnect MDBList"
+          message="Are you sure you want to disconnect MDBList?"
+          confirmText="Disconnect"
+          isDangerous
+          onConfirm={disconnectMdblist}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+
+      {confirmAction === 'disconnectTmdb' && (
+        <ConfirmationModal
+          title="Disconnect TMDB"
+          message="Are you sure you want to disconnect TMDB?"
+          confirmText="Disconnect"
+          isDangerous
+          onConfirm={disconnectTmdb}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
     </>
   );
 };

@@ -1,5 +1,6 @@
 import { FC, useEffect, useState } from 'react';
 import { useToast } from '../../components/Toast';
+import { ConfirmationModal } from '../../components/ConfirmationModal';
 import api from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -7,6 +8,7 @@ import {
   Plus,
   Trash2,
   Shield,
+  X,
 } from 'lucide-react';
 import { FormEvent } from 'react';
 
@@ -28,6 +30,7 @@ const SettingsUsers: FC = () => {
   const { addToast } = useToast();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [showAddUser, setShowAddUser] = useState<boolean>(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; email: string } | null>(null);
 
   useEffect(() => {
     if (user?.isAdmin) {
@@ -45,15 +48,15 @@ const SettingsUsers: FC = () => {
     }
   };
 
-  const deleteUser = async (id: string, email: string): Promise<void> => {
-    if (!confirm(`Delete user "${email}"? This action cannot be undone.`)) return;
-
+  const deleteUser = async (id: string): Promise<void> => {
     try {
       await api.deleteUser(id);
       setUsers(users.filter((u) => u.id !== id));
       addToast('User deleted successfully', 'success');
     } catch (err: any) {
       addToast(`Failed to delete user: ${err.message}`, 'error');
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -115,7 +118,7 @@ const SettingsUsers: FC = () => {
                 {appUser.id !== user?.id && (
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={() => deleteUser(appUser.id, appUser.email)}
+                    onClick={() => setDeleteTarget({ id: appUser.id, email: appUser.email })}
                     title="Delete user"
                   >
                     <Trash2 size={14} />
@@ -137,6 +140,17 @@ const SettingsUsers: FC = () => {
             setUsers([...users, newUser]);
             setShowAddUser(false);
           }}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmationModal
+          title="Delete User"
+          message={`Are you sure you want to delete "${deleteTarget.email}"? This action cannot be undone.`}
+          confirmText="Delete"
+          isDangerous
+          onConfirm={() => deleteUser(deleteTarget.id)}
+          onCancel={() => setDeleteTarget(null)}
         />
       )}
     </>
@@ -173,7 +187,7 @@ const AddUserModal: FC<AddUserModalProps> = ({ onClose, onAdded }) => {
         <div className="modal-header">
           <h2>Add User</h2>
           <button className="modal-close" onClick={onClose}>
-            <Users size={18} />
+            <X size={18} />
           </button>
         </div>
 

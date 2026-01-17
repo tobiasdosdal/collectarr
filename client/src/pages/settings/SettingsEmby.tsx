@@ -1,6 +1,7 @@
 import { FC, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../../components/Toast';
+import { ConfirmationModal } from '../../components/ConfirmationModal';
 import api from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -12,6 +13,7 @@ import {
   AlertCircle,
   Clock,
   ArrowRight,
+  X,
 } from 'lucide-react';
 import { FormEvent } from 'react';
 
@@ -56,6 +58,7 @@ const SettingsEmby: FC = () => {
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     loadEmbyServers();
@@ -118,15 +121,15 @@ const SettingsEmby: FC = () => {
     }
   };
 
-  const deleteEmbyServer = async (id: string, name: string): Promise<void> => {
-    if (!confirm(`Delete Emby server "${name}"?`)) return;
-
+  const deleteEmbyServer = async (id: string): Promise<void> => {
     try {
       await api.deleteEmbyServer(id);
       setEmbyServers(embyServers.filter((s) => s.id !== id));
       addToast('Emby server deleted successfully', 'success');
     } catch (err: any) {
       addToast(`Failed to delete: ${err.message}`, 'error');
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -189,9 +192,19 @@ const SettingsEmby: FC = () => {
             <div className="w-14 h-14 rounded-xl bg-secondary/50 flex items-center justify-center mx-auto mb-4">
               <Server size={24} className="text-muted-foreground" />
             </div>
-            <p className="text-muted-foreground text-sm">
-              No Emby servers configured. Add a server to start syncing collections.
+            <h4 className="text-sm font-medium mb-2">No Emby Servers Connected</h4>
+            <p className="text-muted-foreground text-sm mb-4 max-w-sm mx-auto">
+              Connect your Emby server to sync collections directly to your library. Your collections will appear as Emby collections, making them easy to browse.
             </p>
+            {user?.isAdmin && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowAddServer(true)}
+              >
+                <Plus size={14} />
+                Add Your First Server
+              </button>
+            )}
           </div>
         ) : (
           <div className="mt-4">
@@ -218,7 +231,7 @@ const SettingsEmby: FC = () => {
                   {user?.isAdmin && (
                     <button
                       className="btn btn-ghost btn-sm"
-                      onClick={() => deleteEmbyServer(server.id, server.name)}
+                      onClick={() => setDeleteTarget({ id: server.id, name: server.name })}
                       title="Delete server"
                     >
                       <Trash2 size={14} />
@@ -316,6 +329,17 @@ const SettingsEmby: FC = () => {
           }}
         />
       )}
+
+      {deleteTarget && (
+        <ConfirmationModal
+          title="Delete Emby Server"
+          message={`Are you sure you want to delete "${deleteTarget.name}"? This action cannot be undone.`}
+          confirmText="Delete"
+          isDangerous
+          onConfirm={() => deleteEmbyServer(deleteTarget.id)}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </>
   );
 };
@@ -380,7 +404,7 @@ const AddServerModal: FC<AddServerModalProps> = ({ onClose, onAdded }) => {
         <div className="modal-header">
           <h2>Add Emby Server</h2>
           <button className="modal-close" onClick={onClose}>
-            <Server size={18} />
+            <X size={18} />
           </button>
         </div>
 
@@ -432,6 +456,7 @@ const AddServerModal: FC<AddServerModalProps> = ({ onClose, onAdded }) => {
               className="btn btn-secondary"
               onClick={handleTest}
               disabled={testing || loading || !url || !apiKey}
+              title={!url || !apiKey ? 'Enter URL and API key first' : undefined}
             >
               {testing ? 'Testing...' : 'Test Connection'}
             </button>

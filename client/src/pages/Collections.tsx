@@ -1,11 +1,12 @@
 import { FC, useEffect, useState, useMemo, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import { ConfirmationModal } from '../components/ConfirmationModal';
+import { SkeletonCollectionGrid } from '../components/Skeleton';
 import EmptyCollectionsState from '../components/EmptyCollectionsState';
 import api from '../api/client';
 import { useDebounce } from '../hooks/useDebounce';
 import {
-  FolderOpen,
   Plus,
   RefreshCw,
   Trash2,
@@ -68,6 +69,7 @@ const Collections: FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const { addToast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -187,22 +189,28 @@ const Collections: FC = () => {
     }
   };
 
-  const handleDelete = async (collectionId: string, name: string): Promise<void> => {
-    if (!confirm(`Delete collection "${name}"?`)) return;
-
+  const handleDelete = async (collectionId: string): Promise<void> => {
     try {
       await api.deleteCollection(collectionId);
       setCollections(collections.filter((c) => c.id !== collectionId));
       addToast("Collection deleted successfully", "success");
     } catch (err: any) {
       addToast(`Failed to delete: ${err.message}`, "error");
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
   if (loading) {
     return (
-      <div className="loading">
-        <div className="spinner" />
+      <div className="animate-fade-in">
+        <div className="page-header">
+          <div>
+            <h1>Collections</h1>
+            <p className="text-muted-foreground text-sm mt-1">Manage your media collections and sync them to Emby</p>
+          </div>
+        </div>
+        <SkeletonCollectionGrid count={8} />
       </div>
     );
   }
@@ -478,7 +486,7 @@ const Collections: FC = () => {
                     )}
                     <button
                       className="btn btn-ghost btn-sm"
-                      onClick={() => handleDelete(collection.id, collection.name)}
+                      onClick={() => setDeleteTarget({ id: collection.id, name: collection.name })}
                       aria-label={`Delete collection ${collection.name}`}
                       title="Delete collection"
                     >
@@ -499,6 +507,17 @@ const Collections: FC = () => {
             setCollections([collection, ...collections]);
             setShowCreateModal(false);
           }}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmationModal
+          title="Delete Collection"
+          message={`Are you sure you want to delete "${deleteTarget.name}"? This action cannot be undone.`}
+          confirmText="Delete"
+          isDangerous
+          onConfirm={() => handleDelete(deleteTarget.id)}
+          onCancel={() => setDeleteTarget(null)}
         />
       )}
     </div>

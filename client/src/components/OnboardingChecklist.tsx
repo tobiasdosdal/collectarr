@@ -17,7 +17,6 @@ import {
   FolderPlus,
   RefreshCw,
   Settings,
-  X,
   ChevronRight,
   Sparkles,
   PartyPopper,

@@ -1,6 +1,7 @@
 import { FC, useEffect, useState, useRef, ChangeEvent, FormEvent } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 import api from '../api/client';
 import {
   ArrowLeft,
@@ -150,6 +151,7 @@ const CollectionDetail: FC = () => {
   const [isPolling, setIsPolling] = useState<boolean>(false);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const hasAutoStartedPolling = useRef<boolean>(false);
+  const [confirmAction, setConfirmAction] = useState<'deleteCollection' | 'deletePoster' | null>(null);
 
   // Start polling when refresh button is clicked
   const startPolling = () => {
@@ -359,14 +361,14 @@ const CollectionDetail: FC = () => {
   };
 
   const handleDelete = async (): Promise<void> => {
-    if (!confirm(`Delete collection "${collection?.name}"?`)) return;
-
     try {
       await api.deleteCollection(id!);
       navigate('/collections');
       addToast("Collection deleted successfully", "success");
     } catch (err: any) {
       addToast(`Failed to delete: ${err.message}`, "error");
+    } finally {
+      setConfirmAction(null);
     }
   };
 
@@ -406,7 +408,6 @@ const CollectionDetail: FC = () => {
   };
 
   const handleDeletePoster = async (): Promise<void> => {
-    if (!confirm('Remove: collection poster?')) return;
     try {
       await api.deleteCollectionPoster(id!);
       setCollection({
@@ -416,6 +417,8 @@ const CollectionDetail: FC = () => {
       addToast("Poster removed successfully", "success");
     } catch (err: any) {
       addToast(`Failed to delete poster: ${err.message}`, "error");
+    } finally {
+      setConfirmAction(null);
     }
   };
 
@@ -507,7 +510,7 @@ const CollectionDetail: FC = () => {
                   className="poster-remove-btn absolute top-1 right-1 w-6 h-6 rounded-full bg-destructive/90 border-none text-white flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDeletePoster();
+                    setConfirmAction('deletePoster');
                   }}
                 >
                   <X size={12} />
@@ -584,7 +587,7 @@ const CollectionDetail: FC = () => {
             <Upload size={14} className={syncing ? 'spinning' : ''} strokeWidth={1.5} />
             Sync to Emby
           </button>
-          <button className="btn btn-sm btn-danger" onClick={handleDelete} title="Delete this collection">
+          <button className="btn btn-sm btn-danger" onClick={() => setConfirmAction('deleteCollection')} title="Delete this collection">
             <Trash2 size={14} strokeWidth={1.5} />
             Delete
           </button>
@@ -916,6 +919,28 @@ const CollectionDetail: FC = () => {
             setCollection({ ...collection, ...updated, items: collection.items });
             setShowSettingsModal(false);
           }}
+        />
+      )}
+
+      {confirmAction === 'deleteCollection' && (
+        <ConfirmationModal
+          title="Delete Collection"
+          message={`Are you sure you want to delete "${collection?.name}"? This action cannot be undone.`}
+          confirmText="Delete"
+          isDangerous
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+
+      {confirmAction === 'deletePoster' && (
+        <ConfirmationModal
+          title="Remove Poster"
+          message="Are you sure you want to remove the collection poster?"
+          confirmText="Remove"
+          isDangerous
+          onConfirm={handleDeletePoster}
+          onCancel={() => setConfirmAction(null)}
         />
       )}
     </div>
