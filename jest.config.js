@@ -6,4 +6,6 @@ export default {
   collectCoverageFrom: ['src/**/*.js'],
   coverageDirectory: 'coverage',
   verbose: true,
+  globalSetup: './tests/setup.js',
+  globalTeardown: './tests/teardown.js',
 };
