@@ -32,4 +32,4 @@ echo "Running database migrations..."
 npx prisma db push --skip-generate
 
 # Start the app
-exec node dist/server.js
+exec node dist-server/server.js

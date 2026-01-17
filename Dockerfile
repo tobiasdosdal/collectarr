@@ -52,8 +52,8 @@ RUN apk add --no-cache openssl
 COPY --from=backend-builder /app/node_modules ./node_modules
 COPY --from=backend-builder /app/package*.json ./
 COPY --from=backend-builder /app/prisma ./prisma
-COPY --from=backend-builder /app/dist ./dist
-COPY --from=frontend-builder /app/dist ./dist
+COPY --from=backend-builder /app/dist-server ./dist-server
+COPY --from=frontend-builder /app/client/dist ./dist
 
 # Create data directory for SQLite
 RUN mkdir -p /app/data
