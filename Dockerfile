@@ -3,8 +3,12 @@ FROM node:25-alpine AS frontend-builder
 
 WORKDIR /app
 
-# Copy root package.json (contains all dependencies)
+# Copy package files and strip version to improve caching
+# Version changes won't invalidate dependency cache
 COPY package*.json ./
+RUN apk add --no-cache jq && \
+    jq 'del(.version)' package.json > package.tmp.json && \
+    mv package.tmp.json package.json
 
 # Install root dependencies
 RUN npm ci
@@ -23,9 +27,12 @@ FROM node:25-alpine AS backend-builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files and strip version to improve caching
 COPY package*.json ./
 COPY prisma ./prisma/
+RUN apk add --no-cache jq && \
+    jq 'del(.version)' package.json > package.tmp.json && \
+    mv package.tmp.json package.json
 
 # Install dependencies
 RUN npm ci
@@ -54,6 +61,9 @@ COPY --from=backend-builder /app/package*.json ./
 COPY --from=backend-builder /app/prisma ./prisma
 COPY --from=backend-builder /app/dist-server ./dist-server
 COPY --from=frontend-builder /app/dist ./dist
+
+# Copy VERSION file (separate from package.json to improve caching)
+COPY VERSION ./
 
 # Create data directory for SQLite
 RUN mkdir -p /app/data
