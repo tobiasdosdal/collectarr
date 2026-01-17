@@ -96,6 +96,11 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Create test database
+        run: npx prisma db push
+        env:
+          DATABASE_URL: file:./prisma/test.db
+
       - name: Build server
         run: npm run build:server
 
@@ -103,6 +108,7 @@ jobs:
         run: npm test
         env:
           JWT_SECRET: test-secret-for-ci-must-be-32-chars
+          DATABASE_URL: file:./prisma/test.db
 
   docker:
     name: Docker Build
