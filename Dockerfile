@@ -6,14 +6,15 @@ WORKDIR /app
 # Copy root package.json (contains all dependencies)
 COPY package*.json ./
 
-# Install all dependencies (including frontend)
+# Install root dependencies
 RUN npm ci
 
 # Copy frontend source
 COPY client ./client
 
-# Build frontend (from client directory, using npx to find vite in parent node_modules)
+# Install client dependencies and build
 WORKDIR /app/client
+RUN npm ci
 RUN npx vite build
 WORKDIR /app
 
