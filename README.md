@@ -114,21 +114,36 @@ npm run lint
 
 ## Docker
 
-### Production
+### Using Pre-built Image (Recommended)
+
+```yaml
+# docker-compose.yml
+services:
+  collectarr:
+    image: ghcr.io/tobiasdosdal/collectarr:latest
+    ports:
+      - "7795:7795"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+```
+
 ```bash
 docker compose up -d
 ```
 
 ### Custom Configuration
+
 ```bash
 # With explicit secrets
 JWT_SECRET=your-secret ENCRYPTION_KEY=your-key docker compose up -d
 
-# With external database volume
-docker compose up -d -v /path/to/data:/app/data
+# With custom port
+docker run -d -p 8080:7795 -v ./data:/app/data ghcr.io/tobiasdosdal/collectarr:latest
 ```
 
 ### Build from Source
+
 ```bash
 docker compose up -d --build
 ```

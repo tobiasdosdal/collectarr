@@ -1,8 +1,10 @@
 services:
   collectarr:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/tobiasdosdal/collectarr:latest
+    # To build from source instead, comment out 'image' and uncomment:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     container_name: collectarr
     restart: unless-stopped
     ports:
