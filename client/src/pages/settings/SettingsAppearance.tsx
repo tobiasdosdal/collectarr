@@ -27,17 +27,19 @@ export default function SettingsAppearance() {
   ];
 
   return (
-    <div className="animate-fade-in space-y-8">
+    <div className="animate-fade-in space-y-6">
       {/* Theme Mode Section */}
-      <div className="card">
-        <div className="card-header">
-          <h3 className="flex items-center gap-2">
-            <Sun size={18} className="text-primary" />
-            Theme Mode
-          </h3>
-          <span className="text-xs text-muted-foreground">
-            Currently: {resolvedTheme === 'dark' ? 'Dark' : 'Light'}
-          </span>
+      <div className="bg-card border border-border/50 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+              <Sun size={18} className="text-amber-500" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold m-0">Theme Mode</h2>
+              <p className="text-sm text-muted-foreground m-0">Currently: {resolvedTheme === 'dark' ? 'Dark' : 'Light'}</p>
+            </div>
+          </div>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
           Choose how Collectarr looks to you. Select a theme or let it follow your system settings.
@@ -51,7 +53,7 @@ export default function SettingsAppearance() {
                 'relative flex flex-col items-start gap-3 p-4 rounded-xl border-2 transition-all text-left',
                 themeMode === mode
                   ? 'border-primary bg-primary/5'
-                  : 'border-border/50 hover:border-primary/30 hover:bg-muted/30'
+                  : 'border-border/50 hover:border-primary/30 hover:bg-secondary/30'
               )}
             >
               {themeMode === mode && (
@@ -77,15 +79,17 @@ export default function SettingsAppearance() {
       </div>
 
       {/* Accent Color Section */}
-      <div className="card">
-        <div className="card-header">
-          <h3 className="flex items-center gap-2">
-            <Palette size={18} className="text-primary" />
-            Accent Color
-          </h3>
-          <span className="text-xs text-muted-foreground">
-            Current: {accentColor.name}
-          </span>
+      <div className="bg-card border border-border/50 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-pink-500/10 flex items-center justify-center">
+              <Palette size={18} className="text-pink-500" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold m-0">Accent Color</h2>
+              <p className="text-sm text-muted-foreground m-0">Current: {accentColor.name}</p>
+            </div>
+          </div>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
           Personalize your experience with your favorite accent color.
@@ -98,8 +102,8 @@ export default function SettingsAppearance() {
               className={cn(
                 'relative group flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all',
                 accentColor.name === color.name
-                  ? 'border-foreground/50 bg-muted/30'
-                  : 'border-transparent hover:border-border/50 hover:bg-muted/20'
+                  ? 'border-foreground/50 bg-secondary/50'
+                  : 'border-transparent hover:border-border/50 hover:bg-secondary/30'
               )}
               title={color.name}
             >
@@ -125,17 +129,20 @@ export default function SettingsAppearance() {
       </div>
 
       {/* Preview Section */}
-      <div className="card">
-        <div className="card-header">
-          <h3>Preview</h3>
+      <div className="bg-card border border-border/50 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+            <Monitor size={18} className="text-blue-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold m-0">Preview</h2>
+            <p className="text-sm text-muted-foreground m-0">See your theme choices in action</p>
+          </div>
         </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          See how your theme choices look across different UI elements.
-        </p>
-        <div className="space-y-4">
+        <div className="space-y-6">
           {/* Buttons Preview */}
           <div>
-            <h4 className="text-sm font-medium mb-2">Buttons</h4>
+            <h4 className="text-sm font-medium mb-3">Buttons</h4>
             <div className="flex flex-wrap gap-2">
               <button className="btn btn-primary">Primary</button>
               <button className="btn btn-secondary">Secondary</button>
@@ -146,7 +153,7 @@ export default function SettingsAppearance() {
 
           {/* Badges Preview */}
           <div>
-            <h4 className="text-sm font-medium mb-2">Badges</h4>
+            <h4 className="text-sm font-medium mb-3">Badges</h4>
             <div className="flex flex-wrap gap-2">
               <span className="badge badge-success">Success</span>
               <span className="badge badge-info">Info</span>
@@ -157,12 +164,12 @@ export default function SettingsAppearance() {
 
           {/* Form Elements Preview */}
           <div>
-            <h4 className="text-sm font-medium mb-2">Form Elements</h4>
+            <h4 className="text-sm font-medium mb-3">Form Elements</h4>
             <div className="flex flex-wrap items-center gap-4">
               <input
                 type="text"
                 placeholder="Text input..."
-                className="px-3 py-2 bg-secondary/50 border border-border/50 rounded-lg text-sm max-w-[200px]"
+                className="px-3 py-2 bg-secondary/50 border border-border/50 rounded-lg text-sm max-w-[200px] focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
               <div className="flex items-center gap-2">
                 <div className={cn('toggle', 'active')} />
@@ -173,7 +180,7 @@ export default function SettingsAppearance() {
 
           {/* Progress Bar Preview */}
           <div>
-            <h4 className="text-sm font-medium mb-2">Progress</h4>
+            <h4 className="text-sm font-medium mb-3">Progress</h4>
             <div className="progress-bar max-w-xs">
               <div className="progress-bar-fill" style={{ width: '65%' }} />
             </div>
@@ -181,13 +188,13 @@ export default function SettingsAppearance() {
 
           {/* Cards Preview */}
           <div>
-            <h4 className="text-sm font-medium mb-2">Cards</h4>
+            <h4 className="text-sm font-medium mb-3">Cards</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
-              <div className="p-4 bg-card border border-border/50 rounded-xl">
+              <div className="p-4 bg-secondary/30 border border-border/50 rounded-xl">
                 <div className="text-sm font-medium">Card Title</div>
                 <div className="text-xs text-muted-foreground mt-1">Card description text</div>
               </div>
-              <div className="p-4 bg-card border border-primary/30 rounded-xl">
+              <div className="p-4 bg-secondary/30 border border-primary/30 rounded-xl">
                 <div className="text-sm font-medium text-primary">Highlighted Card</div>
                 <div className="text-xs text-muted-foreground mt-1">With accent border</div>
               </div>

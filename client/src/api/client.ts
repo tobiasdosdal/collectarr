@@ -274,6 +274,14 @@ class ApiClient {
     return this.request(`/users/${id}`, { method: 'DELETE' });
   }
 
+  // Change own password (requires current password)
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<any> {
+    return this.request(`/users/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ currentPassword, password: newPassword }),
+    });
+  }
+
   // Emby Servers
   async getEmbyServers(): Promise<any> {
     return this.request('/emby/servers');

@@ -3,6 +3,8 @@ import { useToast } from '../../components/Toast';
 import { ConfirmationModal } from '../../components/ConfirmationModal';
 import api from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Key,
   Link as LinkIcon,
@@ -13,6 +15,7 @@ import {
   X,
   CheckCircle,
   Play,
+  ExternalLink,
 } from 'lucide-react';
 
 type ConfirmAction = 'regenerateApiKey' | 'disconnectTrakt' | 'disconnectMdblist' | 'disconnectTmdb' | null;
@@ -218,304 +221,313 @@ const SettingsGeneral: FC = () => {
   };
 
   return (
-    <>
-      <div className="card settings-section">
+    <div className="animate-fade-in space-y-6">
+      {/* API Key Section */}
+      <div className="bg-card border border-border/50 rounded-xl p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
             <Key size={18} className="text-primary" />
           </div>
           <div>
-            <h2 className="m-0">API Key</h2>
+            <h2 className="text-lg font-semibold m-0">API Key</h2>
             <p className="text-sm text-muted-foreground m-0">Use this key to authenticate API requests</p>
           </div>
         </div>
 
-        <div className="copy-field">
+        <div className="flex gap-2">
           <input
             type="text"
             value={user?.apiKey || ''}
             readOnly
+            className="flex-1 px-3 py-2 bg-secondary/50 border border-border/50 rounded-lg text-foreground font-mono text-sm"
           />
-          <button
-            className="btn btn-secondary"
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={copyApiKey}
             aria-label="Copy API key"
+            className="px-3"
           >
             {copied ? <Check size={16} /> : <Copy size={16} />}
-          </button>
-          <button
-            className="btn btn-secondary"
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => setConfirmAction('regenerateApiKey')}
             disabled={loading.apiKey}
             aria-label="Regenerate API key"
-            aria-busy={loading.apiKey}
+            className="px-3"
           >
-            <RefreshCw size={16} className={loading.apiKey ? 'spinning' : ''} aria-hidden="true" />
-          </button>
+            <RefreshCw size={16} className={loading.apiKey ? 'animate-spin' : ''} />
+          </Button>
         </div>
       </div>
 
-      <div className="card settings-section">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <LinkIcon size={18} className="text-primary" />
+      {/* Connected Services Section */}
+      <div className="bg-card border border-border/50 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+            <LinkIcon size={18} className="text-blue-500" />
           </div>
           <div>
-            <h2 className="m-0">Connected Services</h2>
+            <h2 className="text-lg font-semibold m-0">Connected Services</h2>
             <p className="text-sm text-muted-foreground m-0">Link your accounts to import collections</p>
           </div>
         </div>
 
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <h3 className="flex items-center gap-2">
-              Trakt
-              {user?.traktConnected && (
-                <span className="badge badge-success text-xs">
-                  <CheckCircle size={10} className="mr-1" />
-                  Connected
-                </span>
-              )}
-            </h3>
-            <p>
-              {user?.traktConnected
-                ? 'Sync your watchlist, collections and lists'
-                : 'Connect to sync your Trakt watchlist and lists'}
-            </p>
-          </div>
-          {user?.isAdmin ? (
-            user?.traktConnected ? (
-              <button
-                className="btn btn-danger btn-sm"
-                onClick={() => setConfirmAction('disconnectTrakt')}
-                disabled={loading.trakt}
-              >
-                <Unlink size={14} />
-                Disconnect
-              </button>
-            ) : (
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={connectTrakt}
-                disabled={loading.trakt}
-              >
-                <LinkIcon size={14} />
-                Connect
-              </button>
-            )
-          ) : (
-            !user?.traktConnected && (
-              <span className="text-xs text-muted-foreground">Admin required to connect</span>
-            )
-          )}
-        </div>
-
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <h3 className="flex items-center gap-2">
-              MDBList
-              {user?.mdblistConnected && (
-                <span className="badge badge-success text-xs">
-                  <CheckCircle size={10} className="mr-1" />
-                  Connected
-                </span>
-              )}
-            </h3>
-            <p>
-              {user?.mdblistConnected
-                ? 'Browse and sync curated MDBList lists'
-                : 'Add your API key to browse MDBList'}
-            </p>
-          </div>
-          {user?.isAdmin ? (
-            user?.mdblistConnected ? (
-              <button
-                className="btn btn-danger btn-sm"
-                onClick={() => setConfirmAction('disconnectMdblist')}
-                disabled={loading.mdblist}
-              >
-                <Unlink size={14} />
-                Disconnect
-              </button>
-            ) : showMdblistInput ? (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={mdblistKey}
-                  onChange={(e) => setMdblistKey(e.target.value)}
-                  placeholder="API Key"
-                  className="px-3 py-2 bg-secondary/50 border border-border/50 rounded-lg text-foreground text-sm"
-                />
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={testMdblist}
-                  disabled={loading.mdblistTest || loading.mdblist}
-                  title="Test API key"
-                >
-                  {loading.mdblistTest ? (
-                    <RefreshCw size={14} className="spinning" />
-                  ) : (
-                    <Play size={14} />
-                  )}
-                  Test
-                </button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={connectMdblist}
-                  disabled={loading.mdblist || loading.mdblistTest}
-                >
-                  {loading.mdblist ? (
-                    <RefreshCw size={14} className="spinning" />
-                  ) : (
-                    'Save'
-                  )}
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => {
-                    setShowMdblistInput(false);
-                    setMdblistKey('');
-                  }}
-                >
-                  <X size={14} />
-                </button>
+        <div className="space-y-4">
+          {/* Trakt */}
+          <div className="flex items-center justify-between p-4 bg-secondary/30 rounded-lg hover:bg-secondary/50 transition-colors">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-medium">Trakt</span>
+                {user?.traktConnected && (
+                  <Badge variant="secondary" className="bg-green-500/10 text-green-500 border-0 text-xs">
+                    <CheckCircle size={10} className="mr-1" />
+                    Connected
+                  </Badge>
+                )}
               </div>
+              <p className="text-sm text-muted-foreground m-0">
+                {user?.traktConnected
+                  ? 'Sync your watchlist, collections and lists'
+                  : 'Connect to sync your Trakt watchlist and lists'}
+              </p>
+            </div>
+            {user?.isAdmin ? (
+              user?.traktConnected ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setConfirmAction('disconnectTrakt')}
+                  disabled={loading.trakt}
+                >
+                  <Unlink size={14} className="mr-1" />
+                  Disconnect
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={connectTrakt}
+                  disabled={loading.trakt}
+                >
+                  <LinkIcon size={14} className="mr-1" />
+                  Connect
+                </Button>
+              )
             ) : (
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => setShowMdblistInput(true)}
-              >
-                <Key size={14} />
-                Add Key
-              </button>
-            )
-          ) : (
-            !user?.mdblistConnected && (
-              <span className="text-xs text-muted-foreground">Admin required to connect</span>
-            )
-          )}
-        </div>
+              !user?.traktConnected && (
+                <span className="text-xs text-muted-foreground">Admin required</span>
+              )
+            )}
+          </div>
 
-        {/* TMDB */}
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <h3 className="flex items-center gap-2">
-              TMDB
-              {user?.tmdbConnected && (
-                <span className="badge badge-success text-xs">
-                  <CheckCircle size={10} className="mr-1" />
-                  Connected
-                </span>
-              )}
-            </h3>
-            <p>
-              {user?.tmdbConnected
-                ? (
+          {/* MDBList */}
+          <div className="flex items-center justify-between p-4 bg-secondary/30 rounded-lg hover:bg-secondary/50 transition-colors">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-medium">MDBList</span>
+                {user?.mdblistConnected && (
+                  <Badge variant="secondary" className="bg-green-500/10 text-green-500 border-0 text-xs">
+                    <CheckCircle size={10} className="mr-1" />
+                    Connected
+                  </Badge>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground m-0">
+                {user?.mdblistConnected
+                  ? 'Browse and sync curated MDBList lists'
+                  : 'Add your API key to browse MDBList'}
+              </p>
+            </div>
+            {user?.isAdmin ? (
+              user?.mdblistConnected ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setConfirmAction('disconnectMdblist')}
+                  disabled={loading.mdblist}
+                >
+                  <Unlink size={14} className="mr-1" />
+                  Disconnect
+                </Button>
+              ) : showMdblistInput ? (
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    value={mdblistKey}
+                    onChange={(e) => setMdblistKey(e.target.value)}
+                    placeholder="API Key"
+                    className="px-3 py-1.5 bg-secondary border border-border/50 rounded-lg text-foreground text-sm w-40"
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={testMdblist}
+                    disabled={loading.mdblistTest || loading.mdblist}
+                  >
+                    {loading.mdblistTest ? (
+                      <RefreshCw size={14} className="animate-spin" />
+                    ) : (
+                      <Play size={14} className="mr-1" />
+                    )}
+                    Test
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={connectMdblist}
+                    disabled={loading.mdblist || loading.mdblistTest}
+                  >
+                    {loading.mdblist ? (
+                      <RefreshCw size={14} className="animate-spin" />
+                    ) : (
+                      'Save'
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowMdblistInput(false);
+                      setMdblistKey('');
+                    }}
+                  >
+                    <X size={14} />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => setShowMdblistInput(true)}
+                >
+                  <Key size={14} className="mr-1" />
+                  Add Key
+                </Button>
+              )
+            ) : (
+              !user?.mdblistConnected && (
+                <span className="text-xs text-muted-foreground">Admin required</span>
+              )
+            )}
+          </div>
+
+          {/* TMDB */}
+          <div className="flex items-start justify-between p-4 bg-secondary/30 rounded-lg hover:bg-secondary/50 transition-colors">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-medium">TMDB</span>
+                {user?.tmdbConnected && (
+                  <Badge variant="secondary" className="bg-green-500/10 text-green-500 border-0 text-xs">
+                    <CheckCircle size={10} className="mr-1" />
+                    Connected
+                  </Badge>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground m-0">
+                {user?.tmdbConnected ? (
                   <>
-                    Enhanced metadata and poster images from TMDB
+                    Enhanced metadata and poster images
                     {tmdbApiKeyMasked && (
-                      <span className="block font-mono text-xs text-muted-foreground mt-1">
-                        Key: {tmdbApiKeyMasked}
-                      </span>
+                      <span className="block font-mono text-xs mt-1">Key: {tmdbApiKeyMasked}</span>
                     )}
                   </>
-                )
-                : (
+                ) : (
                   <>
                     Add your API key for enhanced metadata.{' '}
                     <a
                       href="https://www.themoviedb.org/settings/api"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-primary hover:underline"
+                      className="text-primary hover:underline inline-flex items-center gap-1"
                     >
-                      Get API key
+                      Get API key <ExternalLink size={10} />
                     </a>
-                    <span className="block text-xs text-muted-foreground mt-1">
-                      Use the v4 Read Access Token (starts with "eyJ")
-                    </span>
+                    <span className="block text-xs mt-1">Use the v4 Read Access Token (starts with "eyJ")</span>
                   </>
                 )}
-            </p>
-          </div>
-          {user?.isAdmin ? (
-            user?.tmdbConnected ? (
-              <button
-                className="btn btn-danger btn-sm"
-                onClick={() => setConfirmAction('disconnectTmdb')}
-                disabled={loading.tmdb}
-              >
-                <Unlink size={14} />
-                Disconnect
-              </button>
-            ) : showTmdbInput ? (
-              <div className="flex flex-col gap-2">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={tmdbKey}
-                    onChange={(e) => {
-                      setTmdbKey(e.target.value);
-                      setTmdbValidationError('');
-                    }}
-                    placeholder="eyJ... (v4 Read Access Token)"
-                    className={`px-3 py-2 bg-secondary/50 border rounded-lg text-foreground text-sm min-w-[200px] ${
-                      tmdbValidationError ? 'border-red-500' : 'border-border/50'
-                    }`}
-                  />
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={testTmdb}
-                    disabled={loading.tmdbTest || loading.tmdb}
-                    title="Test API key"
-                  >
-                    {loading.tmdbTest ? (
-                      <RefreshCw size={14} className="spinning" />
-                    ) : (
-                      <Play size={14} />
-                    )}
-                    Test
-                  </button>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={connectTmdb}
-                    disabled={loading.tmdb || loading.tmdbTest}
-                  >
-                    {loading.tmdb ? (
-                      <RefreshCw size={14} className="spinning" />
-                    ) : (
-                      'Save'
-                    )}
-                  </button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => {
-                      setShowTmdbInput(false);
-                      setTmdbKey('');
-                      setTmdbValidationError('');
-                    }}
-                  >
-                    <X size={14} />
-                  </button>
+              </p>
+            </div>
+            {user?.isAdmin ? (
+              user?.tmdbConnected ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setConfirmAction('disconnectTmdb')}
+                  disabled={loading.tmdb}
+                >
+                  <Unlink size={14} className="mr-1" />
+                  Disconnect
+                </Button>
+              ) : showTmdbInput ? (
+                <div className="flex flex-col gap-2 items-end">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={tmdbKey}
+                      onChange={(e) => {
+                        setTmdbKey(e.target.value);
+                        setTmdbValidationError('');
+                      }}
+                      placeholder="eyJ... (v4 token)"
+                      className={`px-3 py-1.5 bg-secondary border rounded-lg text-foreground text-sm w-48 ${
+                        tmdbValidationError ? 'border-red-500' : 'border-border/50'
+                      }`}
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={testTmdb}
+                      disabled={loading.tmdbTest || loading.tmdb}
+                    >
+                      {loading.tmdbTest ? (
+                        <RefreshCw size={14} className="animate-spin" />
+                      ) : (
+                        <Play size={14} className="mr-1" />
+                      )}
+                      Test
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={connectTmdb}
+                      disabled={loading.tmdb || loading.tmdbTest}
+                    >
+                      {loading.tmdb ? (
+                        <RefreshCw size={14} className="animate-spin" />
+                      ) : (
+                        'Save'
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowTmdbInput(false);
+                        setTmdbKey('');
+                        setTmdbValidationError('');
+                      }}
+                    >
+                      <X size={14} />
+                    </Button>
+                  </div>
+                  {tmdbValidationError && (
+                    <span className="text-xs text-red-500">{tmdbValidationError}</span>
+                  )}
                 </div>
-                {tmdbValidationError && (
-                  <span className="text-xs text-red-500">{tmdbValidationError}</span>
-                )}
-              </div>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => setShowTmdbInput(true)}
+                >
+                  <Key size={14} className="mr-1" />
+                  Add Key
+                </Button>
+              )
             ) : (
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => setShowTmdbInput(true)}
-              >
-                <Key size={14} />
-                Add Key
-              </button>
-            )
-          ) : (
-            !user?.tmdbConnected && (
-              <span className="text-xs text-muted-foreground">Admin required to connect</span>
-            )
-          )}
+              !user?.tmdbConnected && (
+                <span className="text-xs text-muted-foreground">Admin required</span>
+              )
+            )}
+          </div>
         </div>
       </div>
 
@@ -562,7 +574,7 @@ const SettingsGeneral: FC = () => {
           onCancel={() => setConfirmAction(null)}
         />
       )}
-    </>
+    </div>
   );
 };
 

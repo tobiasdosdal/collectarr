@@ -15,14 +15,17 @@ import {
   Check,
   AlertTriangle,
   Image,
-  ArrowUpDown,
   Download,
   Server,
   ChevronDown,
   Loader2,
   Settings,
   Clock,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 interface CollectionItem {
   id: string;
@@ -477,8 +480,8 @@ const CollectionDetail: FC = () => {
 
   if (loading) {
     return (
-      <div className="loading">
-        <div className="spinner" />
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -488,14 +491,19 @@ const CollectionDetail: FC = () => {
   }
 
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
-        <div className="flex items-center gap-4">
-          <Link to="/collections" className="btn btn-ghost btn-sm">
-            <ArrowLeft size={16} />
-          </Link>
+    <div className="animate-fade-in space-y-6">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-start gap-6">
+        {/* Poster and Info */}
+        <div className="flex gap-4 flex-1 min-w-0">
+          <Button variant="ghost" size="icon" asChild className="shrink-0 mt-1">
+            <Link to="/collections">
+              <ArrowLeft size={18} />
+            </Link>
+          </Button>
+
           <div
-            className="collection-poster-wrapper group w-20 h-28 rounded-xl overflow-hidden bg-secondary border border-border/50 relative shrink-0 cursor-pointer transition-all hover:border-primary/50"
+            className="group w-24 h-36 rounded-xl overflow-hidden bg-secondary border border-border relative shrink-0 cursor-pointer transition-all hover:border-primary/50"
             onClick={() => posterInputRef.current?.click()}
             title={collection.posterPath ? 'Change poster' : 'Upload poster'}
           >
@@ -507,7 +515,7 @@ const CollectionDetail: FC = () => {
                   className="w-full h-full object-cover"
                 />
                 <button
-                  className="poster-remove-btn absolute top-1 right-1 w-6 h-6 rounded-full bg-destructive/90 border-none text-white flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
                   onClick={(e) => {
                     e.stopPropagation();
                     setConfirmAction('deletePoster');
@@ -517,12 +525,12 @@ const CollectionDetail: FC = () => {
                 </button>
               </>
             ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
+              <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground bg-gradient-to-br from-secondary to-background">
                 {uploadingPoster ? (
-                  <div className="spinner w-5 h-5" />
+                  <Loader2 size={20} className="animate-spin" />
                 ) : (
                   <>
-                    <Image size={20} />
+                    <Image size={24} />
                     <span className="text-[10px] mt-1">Add Poster</span>
                   </>
                 )}
@@ -536,66 +544,75 @@ const CollectionDetail: FC = () => {
               className="hidden"
             />
           </div>
-          <div>
-            <h1>{collection.name}</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {collection.sourceType} • {collection.items?.length || 0} items
+
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-bold truncate">{collection.name}</h1>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <Badge variant="secondary">{collection.sourceType}</Badge>
+              <span className="text-sm text-muted-foreground">
+                {collection.items?.length || 0} items
+              </span>
               {isPolling && (
-                <span className="ml-2 text-primary animate-pulse">• Updating...</span>
+                <span className="text-sm text-primary animate-pulse flex items-center gap-1">
+                  <Loader2 size={12} className="animate-spin" />
+                  Updating...
+                </span>
               )}
-            </p>
+            </div>
             {collection.scheduleInfo?.nextRun && (
-              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                 <Clock size={12} />
                 Next refresh: {new Date(collection.scheduleInfo.nextRun).toLocaleString()}
               </p>
             )}
           </div>
         </div>
+
+        {/* Actions */}
         <div className="flex flex-wrap gap-2">
           {collection.sourceType === 'MANUAL' && (
-            <button className="btn btn-secondary" onClick={() => setShowAddModal(true)}>
-              <Plus size={16} strokeWidth={1.5} />
+            <Button variant="secondary" onClick={() => setShowAddModal(true)}>
+              <Plus size={16} className="mr-2" />
               Add Item
-            </button>
+            </Button>
           )}
           {collection.sourceType !== 'MANUAL' && (
-            <button
-              className="btn btn-sm btn-secondary"
+            <Button
+              variant="secondary"
               onClick={handleRefresh}
               disabled={refreshing}
-              title="Refresh collection from source"
             >
-              <RefreshCw size={14} className={refreshing ? 'spinning' : ''} strokeWidth={1.5} />
+              <RefreshCw size={16} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
-            </button>
+            </Button>
           )}
-          <button
-            className="btn btn-sm btn-secondary"
-            onClick={() => setShowSettingsModal(true)}
-            title="Collection settings"
-          >
-            <Settings size={14} strokeWidth={1.5} />
+          <Button variant="secondary" onClick={() => setShowSettingsModal(true)}>
+            <Settings size={16} className="mr-2" />
             Settings
-          </button>
-          <button
-            className="btn btn-sm btn-primary"
-            onClick={handleSyncToEmby}
-            disabled={syncing}
-            title="Sync this collection to all Emby servers"
-          >
-            <Upload size={14} className={syncing ? 'spinning' : ''} strokeWidth={1.5} />
+          </Button>
+          <Button onClick={handleSyncToEmby} disabled={syncing}>
+            <Upload size={16} className={`mr-2 ${syncing ? 'animate-spin' : ''}`} />
             Sync to Emby
-          </button>
-          <button className="btn btn-sm btn-danger" onClick={() => setConfirmAction('deleteCollection')} title="Delete this collection">
-            <Trash2 size={14} strokeWidth={1.5} />
+          </Button>
+          <Button variant="destructive" onClick={() => setConfirmAction('deleteCollection')}>
+            <Trash2 size={16} className="mr-2" />
             Delete
-          </button>
+          </Button>
         </div>
       </div>
 
+      {/* Sync Result Alert */}
       {(syncResult || lastSyncLog) && (
-        <div className={`alert ${(syncResult?.success || lastSyncLog?.status !== 'FAILED') ? 'alert-success' : 'alert-error'} mb-6`}>
+        <div className={`flex items-center gap-3 p-4 rounded-xl border ${
+          (syncResult?.success || lastSyncLog?.status !== 'FAILED')
+            ? 'bg-green-500/10 border-green-500/20 text-green-400'
+            : 'bg-red-500/10 border-red-500/20 text-red-400'
+        }`}>
+          {(syncResult?.success || lastSyncLog?.status !== 'FAILED') ? (
+            <CheckCircle size={18} />
+          ) : (
+            <XCircle size={18} />
+          )}
           {syncResult ? (
             syncResult.success ? (
               <span>
@@ -606,103 +623,102 @@ const CollectionDetail: FC = () => {
               <span>{syncResult.error || 'Sync failed'}</span>
             )
           ) : lastSyncLog ? (
-            <span className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <span>
                 Last sync: <span className="font-mono font-medium">{lastSyncLog.itemsMatched}/{lastSyncLog.itemsTotal}</span> items matched
-                {lastSyncLog.status === 'PARTIAL' && ' (some items not found in library)'}
+                {lastSyncLog.status === 'PARTIAL' && ' (some items not found)'}
               </span>
               {lastSyncLog.completedAt && (
-                <span className="text-muted-foreground text-xs">
-                  {new Date(lastSyncLog.completedAt).toLocaleDateString()} {new Date(lastSyncLog.completedAt).toLocaleTimeString()}
+                <span className="text-xs opacity-70">
+                  {new Date(lastSyncLog.completedAt).toLocaleDateString()}
                 </span>
               )}
-            </span>
+            </div>
           ) : null}
         </div>
       )}
 
-      {/* Stats and Filter Tabs */}
+      {/* Stats and Filters */}
       {stats && collection.items?.length > 0 && (
-        <div className="card mb-6 p-4">
-          <div className="flex justify-between items-center flex-wrap gap-4">
-            <div className="flex items-center gap-6">
-              <div>
-                <span className="text-2xl font-bold text-primary">
-                  {stats.inEmby}
-                </span>
-                <span className="text-muted-foreground ml-1">
-                  / {stats.total} in library
-                </span>
-              </div>
-              <div className="bg-secondary/50 rounded-lg px-3 py-1.5 flex items-center gap-2">
-                <div className="progress-bar w-24">
-                  <div
-                    className={`progress-bar-fill ${stats.percentInLibrary === 100 ? 'complete' : ''}`}
-                    style={{ width: `${stats.percentInLibrary}%` }}
-                  />
-                </div>
-                <span className="text-sm font-medium">{stats.percentInLibrary}%</span>
-              </div>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-4 rounded-xl bg-secondary/30 border border-border">
+          <div className="flex items-center gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold">{stats.inEmby}<span className="text-muted-foreground font-normal">/{stats.total}</span></div>
+              <div className="text-xs text-muted-foreground">in library</div>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="tabs mb-0">
-                <button
-                  className={`tab ${filter === 'all' ? 'active' : ''}`}
-                  onClick={() => setFilter('all')}
-                >
-                  All ({stats.total})
-                </button>
-                <button
-                  className={`tab ${filter === 'inLibrary' ? 'active' : ''}`}
-                  onClick={() => setFilter('inLibrary')}
-                >
-                  <Check size={12} className="mr-1" />
-                  In Library ({stats.inEmby})
-                </button>
-                <button
-                  className={`tab ${filter === 'missing' ? 'active' : ''}`}
-                  onClick={() => setFilter('missing')}
-                >
-                  <AlertTriangle size={12} className="mr-1" />
-                  Missing ({stats.missing})
-                </button>
+            <div className="h-10 w-px bg-border" />
+            <div className="flex items-center gap-2">
+              <div className="w-24 h-2 rounded-full bg-secondary overflow-hidden">
+                <div
+                  className={`h-full transition-all ${stats.percentInLibrary === 100 ? 'bg-green-500' : 'bg-primary'}`}
+                  style={{ width: `${stats.percentInLibrary}%` }}
+                />
               </div>
-              <div className="flex items-center gap-2">
-                <ArrowUpDown size={14} className="text-muted-foreground" />
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-secondary/50 border border-border/50 rounded-lg px-3 py-2 text-sm cursor-pointer"
-                >
-                  <option value="addedAt">Recently Added</option>
-                  <option value="title">Title</option>
-                  <option value="year">Year</option>
-                  <option value="rating">Rating</option>
-                </select>
-              </div>
+              <span className="text-sm font-medium">{stats.percentInLibrary}%</span>
             </div>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex gap-1 p-1 rounded-lg bg-secondary/50">
+              <button
+                className={`px-3 py-1.5 rounded-md text-sm transition-all ${
+                  filter === 'all' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setFilter('all')}
+              >
+                All ({stats.total})
+              </button>
+              <button
+                className={`px-3 py-1.5 rounded-md text-sm transition-all flex items-center gap-1 ${
+                  filter === 'inLibrary' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setFilter('inLibrary')}
+              >
+                <Check size={12} />
+                In Library ({stats.inEmby})
+              </button>
+              <button
+                className={`px-3 py-1.5 rounded-md text-sm transition-all flex items-center gap-1 ${
+                  filter === 'missing' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setFilter('missing')}
+              >
+                <AlertTriangle size={12} />
+                Missing ({stats.missing})
+              </button>
+            </div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="h-9 px-3 rounded-lg bg-secondary border border-border text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="addedAt">Recently Added</option>
+              <option value="title">Title</option>
+              <option value="year">Year</option>
+              <option value="rating">Rating</option>
+            </select>
           </div>
         </div>
       )}
 
       {collection.items?.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <div className="w-20 h-20 rounded-2xl bg-secondary/50 flex items-center justify-center mb-6">
-              <Film size={36} className="text-muted-foreground" />
-            </div>
-            <h3>No items in this collection</h3>
-            <p>Add items manually or refresh from the source</p>
-            {collection.sourceType === 'MANUAL' ? (
-              <button className="btn btn-primary mt-4" onClick={() => setShowAddModal(true)}>
-                Add Item
-              </button>
-            ) : (
-              <button className="btn btn-primary mt-4" onClick={handleRefresh}>
-                Refresh from Source
-              </button>
-            )}
+        <div className="text-center py-16 rounded-2xl border border-dashed border-border bg-secondary/30">
+          <div className="inline-flex p-4 rounded-full bg-secondary mb-4">
+            <Film size={32} className="text-muted-foreground" />
           </div>
+          <h3 className="text-lg font-semibold mb-2">No items in this collection</h3>
+          <p className="text-muted-foreground mb-6">Add items manually or refresh from the source</p>
+          {collection.sourceType === 'MANUAL' ? (
+            <Button onClick={() => setShowAddModal(true)}>
+              <Plus size={16} className="mr-2" />
+              Add Item
+            </Button>
+          ) : (
+            <Button onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw size={16} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh from Source
+            </Button>
+          )}
         </div>
       ) : (
         <div className="items-grid">
@@ -985,53 +1001,66 @@ const AddItemModal: FC<AddItemModalProps> = ({ collectionId, onClose, onAdded })
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Add Item</h2>
-          <button className="modal-close" onClick={onClose}>
-            <X size={18} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-card border border-border shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-border">
+          <h2 className="text-lg font-semibold">Add Item</h2>
+          <button className="p-2 rounded-lg hover:bg-secondary transition-colors" onClick={onClose}>
+            <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          {error && <div className="error-message mb-4">{error}</div>}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
 
-          <div className="form-group">
-            <label>Type</label>
-            <div className="tabs mb-0">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Type</label>
+            <div className="flex gap-2">
               <button
                 type="button"
-                className={`tab ${mediaType === 'MOVIE' ? 'active' : ''}`}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  mediaType === 'MOVIE'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                }`}
                 onClick={() => setMediaType('MOVIE')}
               >
-                <Film size={14} className="mr-2" />
+                <Film size={16} />
                 Movie
               </button>
               <button
                 type="button"
-                className={`tab ${mediaType === 'SHOW' ? 'active' : ''}`}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  mediaType === 'SHOW'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                }`}
                 onClick={() => setMediaType('SHOW')}
               >
-                <Tv size={14} className="mr-2" />
+                <Tv size={16} />
                 TV Show
               </button>
             </div>
           </div>
 
-          <div className="form-group">
-            <label>Title</label>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Title</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Movie or show title"
               required
+              className="w-full h-10 px-3 rounded-lg bg-secondary border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
             />
           </div>
 
-          <div className="form-group">
-            <label>Year (optional)</label>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Year (optional)</label>
             <input
               type="number"
               value={year}
@@ -1039,48 +1068,52 @@ const AddItemModal: FC<AddItemModalProps> = ({ collectionId, onClose, onAdded })
               placeholder="2024"
               min="1900"
               max="2100"
+              className="w-full h-10 px-3 rounded-lg bg-secondary border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
             />
           </div>
 
-          <div className="form-group">
-            <label>IMDb ID (optional)</label>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">IMDb ID (optional)</label>
             <input
               type="text"
               value={imdbId}
               onChange={(e) => setImdbId(e.target.value)}
               placeholder="tt1234567"
+              className="w-full h-10 px-3 rounded-lg bg-secondary border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
             />
           </div>
 
-          <div className="form-group">
-            <label>TMDb ID (optional)</label>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">TMDb ID (optional)</label>
             <input
               type="text"
               value={tmdbId}
               onChange={(e) => setTmdbId(e.target.value)}
               placeholder="12345"
+              className="w-full h-10 px-3 rounded-lg bg-secondary border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
             />
           </div>
 
           {mediaType === 'SHOW' && (
-            <div className="form-group">
-              <label>TVDb ID (required for Sonarr)</label>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">TVDb ID (required for Sonarr)</label>
               <input
                 type="text"
                 value={tvdbId}
                 onChange={(e) => setTvdbId(e.target.value)}
                 placeholder="12345"
+                className="w-full h-10 px-3 rounded-lg bg-secondary border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
               />
             </div>
           )}
 
-          <div className="modal-actions">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
+          <div className="flex gap-3 pt-4">
+            <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>
               Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
+            </Button>
+            <Button type="submit" className="flex-1" disabled={loading}>
               {loading ? 'Adding...' : 'Add Item'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
@@ -1154,20 +1187,24 @@ const CollectionSettingsModal: FC<CollectionSettingsModalProps> = ({ collection,
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Collection Settings</h2>
-          <button className="modal-close" onClick={onClose}>
-            <X size={18} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-card border border-border shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-border sticky top-0 bg-card z-10">
+          <h2 className="text-lg font-semibold">Collection Settings</h2>
+          <button className="p-2 rounded-lg hover:bg-secondary transition-colors" onClick={onClose}>
+            <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          {error && <div className="error-message mb-4">{error}</div>}
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {error && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
 
-          <div className="form-group">
-            <label className="flex items-center gap-2">
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 text-sm font-medium">
               <Clock size={14} className="text-muted-foreground" />
               Refresh Interval
             </label>
@@ -1361,13 +1398,13 @@ const CollectionSettingsModal: FC<CollectionSettingsModalProps> = ({ collection,
             </div>
           )}
 
-          <div className="modal-actions">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
+          <div className="flex gap-3 pt-4">
+            <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>
               Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
+            </Button>
+            <Button type="submit" className="flex-1" disabled={loading}>
               {loading ? 'Saving...' : 'Save Settings'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

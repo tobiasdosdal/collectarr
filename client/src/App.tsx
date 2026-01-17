@@ -16,6 +16,7 @@ import Collections from './pages/Collections';
 import CollectionDetail from './pages/CollectionDetail';
 import Browse from './pages/Browse';
 import SettingsGeneral from './pages/settings/SettingsGeneral';
+import SettingsAccount from './pages/settings/SettingsAccount';
 import SettingsEmby from './pages/settings/SettingsEmby';
 import SettingsDownloaders from './pages/settings/SettingsDownloaders';
 import SettingsUsers from './pages/settings/SettingsUsers';
@@ -139,6 +140,7 @@ function AppRoutes() {
       >
         <Route index element={<Navigate to="/settings/general" replace />} />
         <Route path="general" element={<SettingsGeneral />} />
+        <Route path="account" element={<SettingsAccount />} />
         <Route path="appearance" element={<SettingsAppearance />} />
         <Route path="emby" element={<SettingsEmby />} />
         <Route path="downloaders" element={<SettingsDownloaders />} />

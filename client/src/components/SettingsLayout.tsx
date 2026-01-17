@@ -6,6 +6,7 @@ import {
   Server,
   DownloadCloud,
   Users as UsersIcon,
+  User,
   ChevronRight,
   Palette,
 } from 'lucide-react';
@@ -23,6 +24,11 @@ const settingsNavItems: SettingsNavItem[] = [
     path: '/settings/general',
     icon: Key,
     label: 'General',
+  },
+  {
+    path: '/settings/account',
+    icon: User,
+    label: 'Account',
   },
   {
     path: '/settings/appearance',
