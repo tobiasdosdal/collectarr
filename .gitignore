@@ -17,6 +17,7 @@ docs/
 
 # Build outputs
 dist/
+dist-server/
 client/dist/
 *.tsbuildinfo
 
