@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import { z } from 'zod';
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
+import { requireAdmin } from '../../shared/middleware/index.js';
 
 const createUserSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -17,16 +18,6 @@ const updateUserSchema = z.object({
 export default async function usersRoutes(fastify: FastifyInstance) {
   // All routes require authentication
   fastify.addHook('preHandler', fastify.authenticate);
-
-  // Admin routes - require admin access
-  const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
-    if (!request.user || !request.user.isAdmin) {
-      return reply.code(403).send({
-        error: 'Forbidden',
-        message: 'Admin access required',
-      });
-    }
-  };
 
   // List all users (admin only)
   fastify.get('/list', {

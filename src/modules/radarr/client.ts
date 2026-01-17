@@ -3,11 +3,7 @@
  * Handles direct communication with Radarr server REST API v3
  */
 
-interface HttpError extends Error {
-  status?: number;
-  code?: string;
-  originalError?: Error;
-}
+import { BaseApiClient, type HttpError, type TestConnectionResult } from '../../shared/http/index.js';
 
 export interface RadarrSystemStatus {
   appName: string;
@@ -120,83 +116,23 @@ export interface AddMovieOptions {
   };
 }
 
-export interface TestConnectionResult {
-  success: boolean;
-  serverName?: string;
-  version?: string;
-  error?: string;
-}
+export interface RadarrTestConnectionResult extends TestConnectionResult {}
 
-class RadarrClient {
-  private baseUrl: string;
-  private apiKey: string;
-
+class RadarrClient extends BaseApiClient {
   constructor(serverUrl: string, apiKey: string) {
-    this.baseUrl = serverUrl.replace(/\/$/, '') + '/api/v3';
-    this.apiKey = apiKey;
+    super(serverUrl, apiKey, 'Radarr', {
+      apiKeyHeaderName: 'X-Api-Key',
+      apiVersion: 'v3',
+    });
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'X-Api-Key': this.apiKey,
-          ...(options.headers as Record<string, string> || {}),
-        },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = `Radarr API error: ${response.status} ${response.statusText}`;
-        try {
-          const errorJson = JSON.parse(errorText);
-          if (errorJson.message) {
-            errorMessage = errorJson.message;
-          }
-        } catch {
-          // Use default error message
-        }
-        const error = new Error(errorMessage) as HttpError;
-        error.status = response.status;
-        throw error;
-      }
-
-      const text = await response.text();
-      return text ? JSON.parse(text) as T : null as T;
-    } catch (error) {
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        const networkError = new Error(`Network error: Failed to connect to Radarr server`) as HttpError;
-        networkError.code = (error as NodeJS.ErrnoException).code || 'NETWORK_ERROR';
-        networkError.originalError = error;
-        throw networkError;
-      }
-      throw error;
-    }
-  }
-
-  async testConnection(): Promise<TestConnectionResult> {
-    try {
-      const status = await this.request<RadarrSystemStatus>('/system/status');
-      return {
-        success: true,
-        serverName: status.instanceName || status.appName,
-        version: status.version,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: (error as Error).message,
-      };
-    }
-  }
-
-  async getSystemStatus(): Promise<RadarrSystemStatus> {
-    return this.request<RadarrSystemStatus>('/system/status');
+  async getSystemStatus(): Promise<{ appName: string; instanceName: string; version: string }> {
+    const status = await this.request<{ appName: string; instanceName: string; version: string }>('/system/status');
+    return {
+      appName: status.appName,
+      instanceName: status.instanceName,
+      version: status.version,
+    };
   }
 
   async getQualityProfiles(): Promise<QualityProfile[]> {
@@ -226,7 +162,6 @@ class RadarrClient {
   }
 
   async addMovie(options: AddMovieOptions): Promise<RadarrMovie> {
-    // First lookup the movie to get full details
     const lookupResult = await this.lookupMovieByTmdbId(options.tmdbId);
     if (!lookupResult) {
       throw new Error(`Movie with TMDb ID ${options.tmdbId} not found`);

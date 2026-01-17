@@ -3,11 +3,7 @@
  * Handles direct communication with Emby server REST API
  */
 
-interface HttpError extends Error {
-  status?: number;
-  code?: string;
-  originalError?: Error;
-}
+import { BaseApiClient, type HttpError, type TestConnectionResult } from '../../shared/http/index.js';
 
 export interface EmbyServerInfo {
   ServerName: string;
@@ -43,12 +39,8 @@ export interface EmbySearchResult {
   TotalRecordCount: number;
 }
 
-export interface TestConnectionResult {
-  success: boolean;
-  serverName?: string;
-  version?: string;
+export interface EmbyTestConnectionResult extends TestConnectionResult {
   id?: string;
-  error?: string;
 }
 
 interface SearchParams {
@@ -70,63 +62,34 @@ interface FindByProviderParams {
   mediaType?: string;
 }
 
-class EmbyClient {
-  private serverUrl: string;
-  private apiKey: string;
-
+class EmbyClient extends BaseApiClient {
   constructor(serverUrl: string, apiKey: string) {
-    this.serverUrl = serverUrl.replace(/\/$/, '');
-    this.apiKey = apiKey;
+    super(
+      serverUrl,
+      apiKey,
+      'Emby',
+      {
+        apiKeyHeaderName: undefined,
+      }
+    );
   }
 
-  async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = new URL(`${this.serverUrl}${endpoint}`);
-    url.searchParams.set('api_key', this.apiKey);
-
-    try {
-      const response = await fetch(url.toString(), {
-        ...options,
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          ...(options.headers as Record<string, string> || {}),
-        },
-      });
-
-      if (!response.ok) {
-        const error = new Error(`Emby API error: ${response.status} ${response.statusText}`) as HttpError;
-        error.status = response.status;
-        throw error;
-      }
-
-      const text = await response.text();
-      return text ? JSON.parse(text) as T : null as T;
-    } catch (error) {
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        const networkError = new Error(`Network error: Failed to connect to Emby server at ${this.serverUrl}`) as HttpError;
-        networkError.code = (error as NodeJS.ErrnoException).code || 'NETWORK_ERROR';
-        networkError.originalError = error;
-        throw networkError;
-      }
-      throw error;
-    }
+  async testConnection(): Promise<EmbyTestConnectionResult> {
+    const result = await super.testConnection();
+    const info = await this.getServerInfo();
+    return {
+      ...result,
+      id: info.Id,
+    };
   }
 
-  async testConnection(): Promise<TestConnectionResult> {
-    try {
-      const info = await this.request<EmbyServerInfo>('/System/Info/Public');
-      return {
-        success: true,
-        serverName: info.ServerName,
-        version: info.Version,
-        id: info.Id,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: (error as Error).message,
-      };
-    }
+  async getSystemStatus(): Promise<{ appName: string; instanceName: string; version: string }> {
+    const info = await this.request<EmbyServerInfo>('/System/Info');
+    return {
+      appName: info.ServerName,
+      instanceName: info.ServerName,
+      version: info.Version,
+    };
   }
 
   async getServerInfo(): Promise<EmbyServerInfo> {
@@ -272,7 +235,7 @@ class EmbyClient {
   }
 
   async uploadItemImage(itemId: string, imageType: string, imageData: Buffer, mimeType: string): Promise<boolean> {
-    const url = new URL(`${this.serverUrl}/Items/${itemId}/Images/${imageType}`);
+    const url = new URL(`${this.baseUrl}/Items/${itemId}/Images/${imageType}`);
     url.searchParams.set('api_key', this.apiKey);
 
     try {
@@ -293,7 +256,7 @@ class EmbyClient {
       return true;
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        const networkError = new Error(`Network error: Failed to upload image to Emby server at ${this.serverUrl}`) as HttpError;
+        const networkError = new Error(`Network error: Failed to upload image to Emby server at ${this.baseUrl}`) as HttpError;
         networkError.code = (error as NodeJS.ErrnoException).code || 'NETWORK_ERROR';
         networkError.originalError = error;
         throw networkError;

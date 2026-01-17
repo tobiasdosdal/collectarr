@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { generateStateToken, verifyStateToken } from '../../utils/oauth-state.js';
+import { requireAdmin } from '../../shared/middleware/index.js';
 
 interface TraktCallbackQuery {
   code?: string;
@@ -34,16 +35,6 @@ async function ensureSettings(fastify: FastifyInstance) {
 
   return settings;
 }
-
-// Helper to check admin status
-const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
-  if (!request.user || !request.user.isAdmin) {
-    return reply.code(403).send({
-      error: 'Forbidden',
-      message: 'Admin access required',
-    });
-  }
-};
 
 export default async function settingsRoutes(fastify: FastifyInstance): Promise<void> {
   // All routes require authentication

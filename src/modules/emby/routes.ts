@@ -1,13 +1,14 @@
 /**
  * Emby Server Management Routes
  * Handles Emby server configuration and sync operations
- * Servers are now global (shared across all users)
+ * Uses the media-servers factory for common CRUD operations
  */
 
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { createEmbyClient } from './client.js';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import EmbyClient, { createEmbyClient } from './client.js';
 import { syncCollections, removeCollectionFromEmby } from './sync-service.js';
-import { encryptApiKey, decryptApiKey } from '../../utils/api-key-crypto.js';
+import { registerServerRoutes } from '../media-servers/index.js';
+import { requireAdmin } from '../../shared/middleware/index.js';
 
 interface ServerParams {
   id: string;
@@ -19,18 +20,6 @@ interface ServerIdParams {
 
 interface CollectionIdParams {
   collectionId: string;
-}
-
-interface EmbyServerBody {
-  name?: string;
-  url?: string;
-  apiKey?: string;
-  isDefault?: boolean;
-}
-
-interface TestConnectionBody {
-  url: string;
-  apiKey: string;
 }
 
 interface RemoveCollectionBody {
@@ -52,287 +41,40 @@ interface SyncLogsQuery {
   embyServerId?: string;
 }
 
-// Helper to check admin status for write operations
-const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
-  if (!request.user || !request.user.isAdmin) {
-    return reply.code(403).send({
-      error: 'Forbidden',
-      message: 'Admin access required',
-    });
-  }
-};
+// Wrapper to match the ClientFactory type signature
+function createClient(url: string, apiKey: string): EmbyClient | null {
+  return createEmbyClient(url, apiKey);
+}
 
 export default async function embyRoutes(fastify: FastifyInstance): Promise<void> {
   // All routes require authentication
   fastify.addHook('onRequest', fastify.authenticate);
 
-  /**
-   * GET /emby/servers - List all Emby servers (global)
-   */
-  fastify.get('/servers', async () => {
-    const servers = await fastify.prisma.embyServer.findMany({
-      orderBy: { createdAt: 'asc' },
-    });
+  // Register common server CRUD routes using the factory
+  const service = registerServerRoutes(fastify, {
+    serviceName: 'Emby',
+    modelName: 'embyServer',
+    supportsProfiles: false,
+    supportsRootFolders: false,
+  }, createClient);
 
-    return servers.map(s => ({
-      id: s.id,
-      name: s.name,
-      url: s.url,
-      isDefault: s.isDefault,
-      createdAt: s.createdAt,
-    }));
-  });
-
-  /**
-   * POST /emby/servers - Add a new Emby server (admin only)
-   */
-  fastify.post<{ Body: EmbyServerBody }>('/servers', {
-    preHandler: [requireAdmin],
-  }, async (request, reply) => {
-    const { name, url, apiKey, isDefault } = request.body;
-
-    if (!name || !url || !apiKey) {
-      return reply.code(400).send({
-        error: 'Bad Request',
-        message: 'name, url, and apiKey are required',
-      });
-    }
-
-    // Test connection first
-    const client = createEmbyClient(url, apiKey);
-    if (!client) {
-      return reply.code(400).send({
-        error: 'Bad Request',
-        message: 'Invalid url or apiKey provided',
-      });
-    }
-    const testResult = await client.testConnection();
-
-    if (!testResult.success) {
-      return reply.code(400).send({
-        error: 'Bad Request',
-        message: `Failed to connect to Emby server: ${testResult.error}`,
-      });
-    }
-
-    // If setting as default, unset other defaults
-    if (isDefault) {
-      await fastify.prisma.embyServer.updateMany({
-        data: { isDefault: false },
-      });
-    }
-
-    // Encrypt API key before storage
-    const encryptedKey = encryptApiKey(apiKey);
-    if (!encryptedKey) {
-      return reply.code(500).send({
-        error: 'Internal Server Error',
-        message: 'Failed to encrypt API key',
-      });
-    }
-
-    const server = await fastify.prisma.embyServer.create({
-      data: {
-        name,
-        url: url.replace(/\/$/, ''), // Remove trailing slash
-        apiKey: encryptedKey.apiKey,
-        apiKeyIv: encryptedKey.apiKeyIv,
-        isDefault: isDefault || false,
-      },
-    });
-
-    return reply.code(201).send({
-      id: server.id,
-      name: server.name,
-      url: server.url,
-      isDefault: server.isDefault,
-      serverName: testResult.serverName,
-      serverVersion: testResult.version,
-    });
-  });
-
-  /**
-   * POST /emby/servers/test - Test Emby server connection
-   */
-  fastify.post<{ Body: TestConnectionBody }>('/servers/test', async (request, reply) => {
-    const { url, apiKey } = request.body;
-    const client = createEmbyClient(url, apiKey);
-    if (!client) {
-      return reply.code(400).send({
-        error: 'Bad Request',
-        message: 'Invalid url or apiKey provided',
-      });
-    }
-    return client.testConnection();
-  });
-
-  /**
-   * GET /emby/servers/:id - Get server details
-   */
-  fastify.get<{ Params: ServerParams }>('/servers/:id', async (request, reply) => {
-    const server = await fastify.prisma.embyServer.findUnique({
-      where: { id: request.params.id },
-    });
-
-    if (!server) {
-      return reply.code(404).send({
-        error: 'Not Found',
-        message: 'Emby server not found',
-      });
-    }
-
-    // Decrypt API key and get server info
-    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
-    const client = createEmbyClient(server.url, decryptedApiKey);
-    if (!client) {
-      return reply.code(500).send({
-        error: 'Internal Server Error',
-        message: 'Failed to create Emby client',
-      });
-    }
-    const info = await client.testConnection();
-
-    return {
-      id: server.id,
-      name: server.name,
-      url: server.url,
-      isDefault: server.isDefault,
-      createdAt: server.createdAt,
-      serverInfo: info.success ? {
-        serverName: info.serverName,
-        version: info.version,
-      } : null,
-    };
-  });
-
-  /**
-   * PATCH /emby/servers/:id - Update server config (admin only)
-   */
-  fastify.patch<{ Params: ServerParams; Body: EmbyServerBody }>('/servers/:id', {
-    preHandler: [requireAdmin],
-  }, async (request, reply) => {
-    const { name, url, apiKey, isDefault } = request.body;
-
-    const server = await fastify.prisma.embyServer.findUnique({
-      where: { id: request.params.id },
-    });
-
-    if (!server) {
-      return reply.code(404).send({
-        error: 'Not Found',
-        message: 'Emby server not found',
-      });
-    }
-
-    // Decrypt existing API key for connection test
-    const existingApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
-
-    // If updating URL or API key, test connection
-    if (url || apiKey) {
-      const client = createEmbyClient(url || server.url, apiKey || existingApiKey);
-      if (!client) {
-        return reply.code(400).send({
-          error: 'Bad Request',
-          message: 'Invalid url or apiKey provided',
-        });
-      }
-      const testResult = await client.testConnection();
-      if (!testResult.success) {
-        return reply.code(400).send({
-          error: 'Bad Request',
-          message: `Failed to connect: ${testResult.error}`,
-        });
-      }
-    }
-
-    // If setting as default, unset other defaults
-    if (isDefault) {
-      await fastify.prisma.embyServer.updateMany({
-        where: { id: { not: server.id } },
-        data: { isDefault: false },
-      });
-    }
-
-    // Encrypt new API key if provided
-    let apiKeyData = {};
-    if (apiKey) {
-      const encryptedKey = encryptApiKey(apiKey);
-      if (!encryptedKey) {
-        return reply.code(500).send({
-          error: 'Internal Server Error',
-          message: 'Failed to encrypt API key',
-        });
-      }
-      apiKeyData = { apiKey: encryptedKey.apiKey, apiKeyIv: encryptedKey.apiKeyIv };
-    }
-
-    const updated = await fastify.prisma.embyServer.update({
-      where: { id: server.id },
-      data: {
-        ...(name && { name }),
-        ...(url && { url: url.replace(/\/$/, '') }),
-        ...apiKeyData,
-        ...(isDefault !== undefined && { isDefault }),
-      },
-    });
-
-    return {
-      id: updated.id,
-      name: updated.name,
-      url: updated.url,
-      isDefault: updated.isDefault,
-    };
-  });
-
-  /**
-   * DELETE /emby/servers/:id - Remove server (admin only)
-   */
-  fastify.delete<{ Params: ServerParams }>('/servers/:id', {
-    preHandler: [requireAdmin],
-  }, async (request, reply) => {
-    const server = await fastify.prisma.embyServer.findUnique({
-      where: { id: request.params.id },
-    });
-
-    if (!server) {
-      return reply.code(404).send({
-        error: 'Not Found',
-        message: 'Emby server not found',
-      });
-    }
-
-    await fastify.prisma.embyServer.delete({
-      where: { id: server.id },
-    });
-
-    return reply.code(204).send();
-  });
+  // =========================================================================
+  // Emby-specific routes below
+  // =========================================================================
 
   /**
    * GET /emby/servers/:id/libraries - Get server libraries
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id/libraries', async (request, reply) => {
-    const server = await fastify.prisma.embyServer.findUnique({
-      where: { id: request.params.id },
-    });
-
-    if (!server) {
-      return reply.code(404).send({
-        error: 'Not Found',
-        message: 'Emby server not found',
-      });
-    }
-
-    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
-    const client = createEmbyClient(server.url, decryptedApiKey);
+    const { client, error, statusCode } = await service.getClient(request.params.id);
     if (!client) {
-      return reply.code(500).send({
-        error: 'Internal Server Error',
-        message: 'Failed to create Emby client',
+      return reply.code(statusCode || 500).send({
+        error: statusCode === 404 ? 'Not Found' : 'Internal Server Error',
+        message: error,
       });
     }
-    const libraries = await client.getLibraries();
 
+    const libraries = await client.getLibraries();
     return libraries.map((lib: any) => ({
       name: lib.Name,
       type: lib.CollectionType,
@@ -345,27 +87,15 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
    * GET /emby/servers/:id/collections - Get collections on server
    */
   fastify.get<{ Params: ServerParams }>('/servers/:id/collections', async (request, reply) => {
-    const server = await fastify.prisma.embyServer.findUnique({
-      where: { id: request.params.id },
-    });
-
-    if (!server) {
-      return reply.code(404).send({
-        error: 'Not Found',
-        message: 'Emby server not found',
-      });
-    }
-
-    const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
-    const client = createEmbyClient(server.url, decryptedApiKey);
+    const { client, error, statusCode } = await service.getClient(request.params.id);
     if (!client) {
-      return reply.code(500).send({
-        error: 'Internal Server Error',
-        message: 'Failed to create Emby client',
+      return reply.code(statusCode || 500).send({
+        error: statusCode === 404 ? 'Not Found' : 'Internal Server Error',
+        message: error,
       });
     }
-    const collections = await client.getCollections();
 
+    const collections = await client.getCollections();
     return collections.map(col => ({
       id: col.Id,
       name: col.Name,
@@ -381,7 +111,6 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       userId: request.user?.id,
       prisma: fastify.prisma,
     });
-
     return result;
   });
 
@@ -508,25 +237,14 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
   fastify.post<{ Params: ServerIdParams; Body: SearchBody }>(
     '/servers/:serverId/search',
     async (request, reply) => {
-      const server = await fastify.prisma.embyServer.findUnique({
-        where: { id: request.params.serverId },
-      });
-
-      if (!server) {
-        return reply.code(404).send({
-          error: 'Not Found',
-          message: 'Emby server not found',
-        });
-      }
-
-      const decryptedApiKey = decryptApiKey(server.apiKey, server.apiKeyIv);
-    const client = createEmbyClient(server.url, decryptedApiKey);
+      const { client, error, statusCode } = await service.getClient(request.params.serverId);
       if (!client) {
-        return reply.code(500).send({
-          error: 'Internal Server Error',
-          message: 'Failed to create Emby client',
+        return reply.code(statusCode || 500).send({
+          error: statusCode === 404 ? 'Not Found' : 'Internal Server Error',
+          message: error,
         });
       }
+
       const { query, imdbId, tmdbId, tvdbId, mediaType, year } = request.body;
 
       // If provider IDs given, search by those

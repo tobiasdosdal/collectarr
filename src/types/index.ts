@@ -2,6 +2,11 @@ import type { PrismaClient } from '@prisma/client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ScheduledTask } from 'node-cron';
 
+// Re-export from new type files
+export * from './server.types.js';
+export * from './external.types.js';
+export * from './collection.types.js';
+
 // ============================================================================
 // Config Types
 // ============================================================================

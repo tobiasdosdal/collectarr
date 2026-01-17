@@ -1,4 +1,4 @@
-import { buildTestApp, createTestUser, authRequest } from './helper.js';
+import { buildTestApp, createAdminUser, authRequest } from './helper.js';
 
 describe('Collections API', () => {
   let app;
@@ -7,7 +7,8 @@ describe('Collections API', () => {
 
   beforeAll(async () => {
     app = await buildTestApp();
-    const auth = await createTestUser(app, `collections-${Date.now()}@example.com`);
+    // Use admin user since collection creation requires admin privileges
+    const auth = await createAdminUser(app, `collections-admin-${Date.now()}@example.com`);
     token = auth.token;
     client = authRequest(app, token);
   });
