@@ -1,5 +1,7 @@
 # Collectarr
 
+[![CI](https://github.com/tobiasdosdal/collectarr/actions/workflows/ci.yml/badge.svg)](https://github.com/tobiasdosdal/collectarr/actions/workflows/ci.yml)
+
 A self-hosted media collection manager that syncs curated lists with your Emby library and integrates with Radarr/Sonarr for requesting missing content.
 
 ## Features
