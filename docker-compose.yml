@@ -1,50 +1,27 @@
 services:
   collectarr:
     image: ghcr.io/tobiasdosdal/collectarr:latest
-    # To build from source instead, comment out 'image' and uncomment:
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
     container_name: collectarr
     restart: unless-stopped
     ports:
       - "${PORT:-7795}:7795"
     environment:
-      - NODE_ENV=production
-      - PORT=7795
-      - HOST=0.0.0.0
-      - DATABASE_URL=file:/app/data/collectarr.db
       # Secrets auto-generated on first run if not provided
       - JWT_SECRET=${JWT_SECRET:-}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
-      # Optional integrations
+      # Optional integrations (can also be configured in UI)
       - MDBLIST_API_KEY=${MDBLIST_API_KEY:-}
       - TMDB_API_KEY=${TMDB_API_KEY:-}
       - TRAKT_CLIENT_ID=${TRAKT_CLIENT_ID:-}
       - TRAKT_CLIENT_SECRET=${TRAKT_CLIENT_SECRET:-}
-      - TRAKT_REDIRECT_URI=${TRAKT_REDIRECT_URI:-}
     volumes:
       - collectarr-data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7795/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7795/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 128M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    security_opt:
-      - no-new-privileges:true
+      start_period: 15s
 
 volumes:
   collectarr-data:
-    name: collectarr-data
