@@ -1,4 +1,4 @@
-import { FC, useState } from 'react';
+import { FC, useState, useEffect } from 'react';
 import { useToast } from '../../components/Toast';
 import api from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
@@ -11,6 +11,7 @@ import {
   RefreshCw,
   X,
   CheckCircle,
+  Play,
 } from 'lucide-react';
 
 const SettingsGeneral: FC = () => {
@@ -19,6 +20,10 @@ const SettingsGeneral: FC = () => {
   const [copied, setCopied] = useState<boolean>(false);
   const [mdblistKey, setMdblistKey] = useState<string>('');
   const [showMdblistInput, setShowMdblistInput] = useState<boolean>(false);
+  const [tmdbKey, setTmdbKey] = useState<string>('');
+  const [showTmdbInput, setShowTmdbInput] = useState<boolean>(false);
+  const [tmdbApiKeyMasked, setTmdbApiKeyMasked] = useState<string | null>(null);
+  const [tmdbValidationError, setTmdbValidationError] = useState<string>('');
   const [loading, setLoading] = useState<Record<string, boolean>>({});
 
   const copyApiKey = async (): Promise<void> => {
@@ -100,6 +105,115 @@ const SettingsGeneral: FC = () => {
       addToast(`Failed to disconnect: ${err.message}`, 'error');
     } finally {
       setLoading(prev => ({ ...prev, mdblist: false }));
+    }
+  };
+
+  const testMdblist = async (): Promise<void> => {
+    if (!mdblistKey.trim()) {
+      addToast('Please enter your MDBList API key', 'error');
+      return;
+    }
+
+    setLoading(prev => ({ ...prev, mdblistTest: true }));
+    try {
+      const result = await api.testMdblistConnection(mdblistKey);
+      if (result.success) {
+        addToast('MDBList API key is valid!', 'success');
+      }
+    } catch (err: any) {
+      addToast(`Test failed: ${err.message}`, 'error');
+    } finally {
+      setLoading(prev => ({ ...prev, mdblistTest: false }));
+    }
+  };
+
+  // Load settings to get masked TMDB key
+  const loadSettings = async (): Promise<void> => {
+    try {
+      const settings = await api.getSettings();
+      setTmdbApiKeyMasked(settings.tmdbApiKeyMasked);
+    } catch (err) {
+      console.error('Failed to load settings:', err);
+    }
+  };
+
+  // Load settings on mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  // Validate TMDB API key format (v4 tokens start with 'eyJ' and are fairly long)
+  const validateTmdbKey = (key: string): string | null => {
+    const trimmedKey = key.trim();
+    if (!trimmedKey) {
+      return 'Please enter your TMDB API key';
+    }
+    if (!trimmedKey.startsWith('eyJ')) {
+      return 'Invalid format. TMDB API keys (v4 Read Access Token) should start with "eyJ"';
+    }
+    if (trimmedKey.length < 100) {
+      return 'API key appears too short. Please use the full v4 Read Access Token from TMDB';
+    }
+    return null;
+  };
+
+  const testTmdb = async (): Promise<void> => {
+    const validationError = validateTmdbKey(tmdbKey);
+    if (validationError) {
+      setTmdbValidationError(validationError);
+      return;
+    }
+    setTmdbValidationError('');
+
+    setLoading(prev => ({ ...prev, tmdbTest: true }));
+    try {
+      const result = await api.testTmdbConnection(tmdbKey);
+      if (result.success) {
+        addToast('TMDB API key is valid!', 'success');
+      }
+    } catch (err: any) {
+      addToast(`Test failed: ${err.message}`, 'error');
+    } finally {
+      setLoading(prev => ({ ...prev, tmdbTest: false }));
+    }
+  };
+
+  const connectTmdb = async (): Promise<void> => {
+    const validationError = validateTmdbKey(tmdbKey);
+    if (validationError) {
+      setTmdbValidationError(validationError);
+      return;
+    }
+    setTmdbValidationError('');
+
+    setLoading(prev => ({ ...prev, tmdb: true }));
+    try {
+      await api.connectTmdb(tmdbKey);
+      await refreshUser();
+      await loadSettings();
+      setShowTmdbInput(false);
+      setTmdbKey('');
+      addToast('TMDB connected successfully', 'success');
+    } catch (err: any) {
+      addToast(`Failed to connect: ${err.message}`, 'error');
+    } finally {
+      setLoading(prev => ({ ...prev, tmdb: false }));
+    }
+  };
+
+  const disconnectTmdb = async (): Promise<void> => {
+    if (!confirm('Disconnect TMDB?')) return;
+
+    setLoading(prev => ({ ...prev, tmdb: true }));
+    try {
+      await api.disconnectTmdb();
+      await refreshUser();
+      setTmdbApiKeyMasked(null);
+      addToast('TMDB disconnected successfully', 'success');
+    } catch (err: any) {
+      addToast(`Failed to disconnect: ${err.message}`, 'error');
+    } finally {
+      setLoading(prev => ({ ...prev, tmdb: false }));
     }
   };
 
@@ -233,15 +347,35 @@ const SettingsGeneral: FC = () => {
                   className="px-3 py-2 bg-secondary/50 border border-border/50 rounded-lg text-foreground text-sm"
                 />
                 <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={testMdblist}
+                  disabled={loading.mdblistTest || loading.mdblist}
+                  title="Test API key"
+                >
+                  {loading.mdblistTest ? (
+                    <RefreshCw size={14} className="spinning" />
+                  ) : (
+                    <Play size={14} />
+                  )}
+                  Test
+                </button>
+                <button
                   className="btn btn-primary btn-sm"
                   onClick={connectMdblist}
-                  disabled={loading.mdblist}
+                  disabled={loading.mdblist || loading.mdblistTest}
                 >
-                  Save
+                  {loading.mdblist ? (
+                    <RefreshCw size={14} className="spinning" />
+                  ) : (
+                    'Save'
+                  )}
                 </button>
                 <button
                   className="btn btn-ghost btn-sm"
-                  onClick={() => setShowMdblistInput(false)}
+                  onClick={() => {
+                    setShowMdblistInput(false);
+                    setMdblistKey('');
+                  }}
                 >
                   <X size={14} />
                 </button>
@@ -257,6 +391,128 @@ const SettingsGeneral: FC = () => {
             )
           ) : (
             !user?.mdblistConnected && (
+              <span className="text-xs text-muted-foreground">Admin required to connect</span>
+            )
+          )}
+        </div>
+
+        {/* TMDB */}
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <h3 className="flex items-center gap-2">
+              TMDB
+              {user?.tmdbConnected && (
+                <span className="badge badge-success text-xs">
+                  <CheckCircle size={10} className="mr-1" />
+                  Connected
+                </span>
+              )}
+            </h3>
+            <p>
+              {user?.tmdbConnected
+                ? (
+                  <>
+                    Enhanced metadata and poster images from TMDB
+                    {tmdbApiKeyMasked && (
+                      <span className="block font-mono text-xs text-muted-foreground mt-1">
+                        Key: {tmdbApiKeyMasked}
+                      </span>
+                    )}
+                  </>
+                )
+                : (
+                  <>
+                    Add your API key for enhanced metadata.{' '}
+                    <a
+                      href="https://www.themoviedb.org/settings/api"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Get API key
+                    </a>
+                    <span className="block text-xs text-muted-foreground mt-1">
+                      Use the v4 Read Access Token (starts with "eyJ")
+                    </span>
+                  </>
+                )}
+            </p>
+          </div>
+          {user?.isAdmin ? (
+            user?.tmdbConnected ? (
+              <button
+                className="btn btn-danger btn-sm"
+                onClick={disconnectTmdb}
+                disabled={loading.tmdb}
+              >
+                <Unlink size={14} />
+                Disconnect
+              </button>
+            ) : showTmdbInput ? (
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={tmdbKey}
+                    onChange={(e) => {
+                      setTmdbKey(e.target.value);
+                      setTmdbValidationError('');
+                    }}
+                    placeholder="eyJ... (v4 Read Access Token)"
+                    className={`px-3 py-2 bg-secondary/50 border rounded-lg text-foreground text-sm min-w-[200px] ${
+                      tmdbValidationError ? 'border-red-500' : 'border-border/50'
+                    }`}
+                  />
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={testTmdb}
+                    disabled={loading.tmdbTest || loading.tmdb}
+                    title="Test API key"
+                  >
+                    {loading.tmdbTest ? (
+                      <RefreshCw size={14} className="spinning" />
+                    ) : (
+                      <Play size={14} />
+                    )}
+                    Test
+                  </button>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={connectTmdb}
+                    disabled={loading.tmdb || loading.tmdbTest}
+                  >
+                    {loading.tmdb ? (
+                      <RefreshCw size={14} className="spinning" />
+                    ) : (
+                      'Save'
+                    )}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      setShowTmdbInput(false);
+                      setTmdbKey('');
+                      setTmdbValidationError('');
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                {tmdbValidationError && (
+                  <span className="text-xs text-red-500">{tmdbValidationError}</span>
+                )}
+              </div>
+            ) : (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowTmdbInput(true)}
+              >
+                <Key size={14} />
+                Add Key
+              </button>
+            )
+          ) : (
+            !user?.tmdbConnected && (
               <span className="text-xs text-muted-foreground">Admin required to connect</span>
             )
           )}

@@ -8,6 +8,7 @@ interface User {
   isAdmin?: boolean;
   traktConnected: boolean;
   mdblistConnected: boolean;
+  tmdbConnected: boolean;
   createdAt: string;
 }
 

@@ -129,6 +129,40 @@ class ApiClient {
     return this.request('/auth/mdblist/disconnect', { method: 'POST' });
   }
 
+  async testMdblistConnection(apiKey: string): Promise<{ success: boolean; message?: string }> {
+    return this.request('/settings/mdblist/test', {
+      method: 'POST',
+      body: JSON.stringify({ apiKey }),
+    });
+  }
+
+  async connectTmdb(apiKey: string): Promise<any> {
+    return this.request('/settings/tmdb', {
+      method: 'PUT',
+      body: JSON.stringify({ apiKey }),
+    });
+  }
+
+  async disconnectTmdb(): Promise<any> {
+    return this.request('/settings/tmdb', { method: 'DELETE' });
+  }
+
+  async testTmdbConnection(apiKey: string): Promise<{ success: boolean; message?: string }> {
+    return this.request('/settings/tmdb/test', {
+      method: 'POST',
+      body: JSON.stringify({ apiKey }),
+    });
+  }
+
+  async getSettings(): Promise<{
+    traktConnected: boolean;
+    mdblistConnected: boolean;
+    tmdbConnected: boolean;
+    tmdbApiKeyMasked: string | null;
+  }> {
+    return this.request('/settings');
+  }
+
   // Collections
   async getCollections(): Promise<any> {
     return this.request('/collections');

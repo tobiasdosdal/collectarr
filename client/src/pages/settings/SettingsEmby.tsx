@@ -321,11 +321,35 @@ const SettingsEmby: FC = () => {
 };
 
 const AddServerModal: FC<AddServerModalProps> = ({ onClose, onAdded }) => {
+  const { addToast } = useToast();
   const [name, setName] = useState<string>('');
   const [url, setUrl] = useState<string>('');
   const [apiKey, setApiKey] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
+  const [testing, setTesting] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+
+  const handleTest = async (): Promise<void> => {
+    if (!url || !apiKey) {
+      setError('URL and API key are required to test connection');
+      return;
+    }
+    setError('');
+    setTesting(true);
+
+    try {
+      const testResult = await api.testEmbyConnection(url, apiKey);
+      if (testResult.success) {
+        addToast('Connection successful!', 'success');
+      } else {
+        setError(testResult.error || 'Connection failed');
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
@@ -333,6 +357,14 @@ const AddServerModal: FC<AddServerModalProps> = ({ onClose, onAdded }) => {
     setLoading(true);
 
     try {
+      // Test connection first
+      const testResult = await api.testEmbyConnection(url, apiKey);
+      if (!testResult.success) {
+        setError(testResult.error || 'Connection failed');
+        setLoading(false);
+        return;
+      }
+
       const server = await api.addEmbyServer({ name, url, apiKey });
       onAdded(server);
     } catch (err: any) {
@@ -395,7 +427,15 @@ const AddServerModal: FC<AddServerModalProps> = ({ onClose, onAdded }) => {
             <button type="button" className="btn btn-secondary" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleTest}
+              disabled={testing || loading || !url || !apiKey}
+            >
+              {testing ? 'Testing...' : 'Test Connection'}
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={loading || testing}>
               {loading ? 'Adding...' : 'Add Server'}
             </button>
           </div>

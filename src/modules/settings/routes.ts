@@ -21,6 +21,22 @@ interface TraktTokenResponse {
   expires_in: number;
 }
 
+interface TmdbTestBody {
+  apiKey?: string;
+}
+
+interface MdblistTestBody {
+  apiKey?: string;
+}
+
+// Helper function to mask API keys for display
+function maskApiKey(key: string | null | undefined): string | null {
+  if (!key) return null;
+  if (key.length <= 8) return '***';
+  // Show first 4 and last 4 characters
+  return `${key.slice(0, 4)}${'*'.repeat(Math.min(key.length - 8, 20))}${key.slice(-4)}`;
+}
+
 // Helper to ensure Settings singleton exists
 async function ensureSettings(fastify: FastifyInstance) {
   let settings = await fastify.prisma.settings.findUnique({
@@ -48,6 +64,7 @@ export default async function settingsRoutes(fastify: FastifyInstance): Promise<
       traktConnected: !!settings.traktAccessToken,
       mdblistConnected: !!settings.mdblistApiKey,
       tmdbConnected: !!settings.tmdbApiKey,
+      tmdbApiKeyMasked: maskApiKey(settings.tmdbApiKey),
     };
   });
 
@@ -234,6 +251,36 @@ export default async function settingsRoutes(fastify: FastifyInstance): Promise<
       });
     }
 
+    // Validate API key by making a test request to TMDB
+    try {
+      const testResponse = await fetch('https://api.themoviedb.org/3/configuration', {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+      });
+
+      if (!testResponse.ok) {
+        const status = testResponse.status;
+        if (status === 401) {
+          return reply.code(400).send({
+            error: 'Invalid API Key',
+            message: 'The TMDB API key is invalid. Please check your key and try again.',
+          });
+        }
+        return reply.code(400).send({
+          error: 'API Key Validation Failed',
+          message: `Failed to validate TMDB API key: HTTP ${status}`,
+        });
+      }
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to validate TMDB API key');
+      return reply.code(500).send({
+        error: 'Connection Error',
+        message: 'Failed to connect to TMDB to validate the API key. Please try again.',
+      });
+    }
+
     await fastify.prisma.settings.upsert({
       where: { id: 'singleton' },
       create: {
@@ -261,5 +308,108 @@ export default async function settingsRoutes(fastify: FastifyInstance): Promise<
     });
 
     return { success: true };
+  });
+
+  // POST /settings/tmdb/test - Test TMDB API key without saving (admin only)
+  fastify.post<{ Body: TmdbTestBody }>('/tmdb/test', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
+    const { apiKey } = request.body;
+
+    if (!apiKey) {
+      return reply.code(400).send({
+        error: 'Bad Request',
+        message: 'API key is required',
+      });
+    }
+
+    // Validate TMDB API key format (v4 tokens start with 'eyJ')
+    if (!apiKey.startsWith('eyJ') || apiKey.length < 100) {
+      return reply.code(400).send({
+        error: 'Invalid Format',
+        message: 'Invalid TMDB API key format. Please use a v4 Read Access Token (starts with "eyJ").',
+      });
+    }
+
+    // Test the API key by making a request to TMDB
+    try {
+      const testResponse = await fetch('https://api.themoviedb.org/3/configuration', {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+      });
+
+      if (!testResponse.ok) {
+        const status = testResponse.status;
+        if (status === 401) {
+          return reply.code(400).send({
+            success: false,
+            error: 'Invalid API Key',
+            message: 'The TMDB API key is invalid or expired. Please check your key and try again.',
+          });
+        }
+        return reply.code(400).send({
+          success: false,
+          error: 'API Key Validation Failed',
+          message: `Failed to validate TMDB API key: HTTP ${status}`,
+        });
+      }
+
+      return { success: true, message: 'TMDB API key is valid' };
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to test TMDB API key');
+      return reply.code(500).send({
+        success: false,
+        error: 'Connection Error',
+        message: 'Failed to connect to TMDB. Please check your network connection and try again.',
+      });
+    }
+  });
+
+  // POST /settings/mdblist/test - Test MDBList API key without saving (admin only)
+  fastify.post<{ Body: MdblistTestBody }>('/mdblist/test', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
+    const { apiKey } = request.body;
+
+    if (!apiKey) {
+      return reply.code(400).send({
+        error: 'Bad Request',
+        message: 'API key is required',
+      });
+    }
+
+    // Test the API key by making a request to MDBList
+    try {
+      const testResponse = await fetch(`https://api.mdblist.com/lists/user?apikey=${encodeURIComponent(apiKey)}`, {
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (!testResponse.ok) {
+        const status = testResponse.status;
+        if (status === 401 || status === 403) {
+          return reply.code(400).send({
+            success: false,
+            error: 'Invalid API Key',
+            message: 'The MDBList API key is invalid. Please check your key and try again.',
+          });
+        }
+        return reply.code(400).send({
+          success: false,
+          error: 'API Key Validation Failed',
+          message: `Failed to validate MDBList API key: HTTP ${status}`,
+        });
+      }
+
+      return { success: true, message: 'MDBList API key is valid' };
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to test MDBList API key');
+      return reply.code(500).send({
+        success: false,
+        error: 'Connection Error',
+        message: 'Failed to connect to MDBList. Please check your network connection and try again.',
+      });
+    }
   });
 }
