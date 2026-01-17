@@ -9,6 +9,7 @@ import { syncCollections } from '../modules/emby/sync-service.js';
 import { ensureValidTraktTokens } from '../utils/trakt-auth.js';
 import { withRetry } from '../utils/retry.js';
 import { cacheImage } from '../utils/image-cache.js';
+import { TMDB_API_DELAY_MS, REFRESH_PROGRESS_LOG_INTERVAL, COLLECTION_ITEM_FETCH_DELAY_MS } from '../config/constants.js';
 import type { FastifyInstance } from 'fastify';
 import type { PrismaClient, Collection, Settings } from '@prisma/client';
 import type { AppConfig } from '../types/index.js';
@@ -26,7 +27,6 @@ interface RefreshResult {
 
 // Rate limiting for TMDB API
 let lastTmdbApiCallTime = 0;
-const TMDB_API_DELAY_MS = 300;
 
 interface CollectionItem {
   mediaType: string;

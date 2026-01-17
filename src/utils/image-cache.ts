@@ -16,6 +16,7 @@ const MIN_FILE_SIZE = 100;
 const cacheQueue = new Set<string>();
 const processingQueue = new Set<string>();
 let queueProcessorRunning = false;
+let queueProcessorStopped = false;
 const QUEUE_CONCURRENCY = 2; // Reduced from 5 to respect TMDB rate limits
 const RATE_LIMIT_DELAY_MS = 600; // 600ms between requests (40 req/10 sec = 250ms, but be conservative)
 
@@ -88,7 +89,7 @@ async function cleanupTempFiles(): Promise<void> {
 ensureCacheDir().then(() => cleanupTempFiles());
 
 async function processCacheQueue(): Promise<void> {
-  if (queueProcessorRunning) {
+  if (queueProcessorRunning || queueProcessorStopped) {
     return;
   }
 
@@ -99,7 +100,7 @@ async function processCacheQueue(): Promise<void> {
   try {
     console.log(`Starting cache queue processor. Queue size: ${cacheQueue.size}`);
 
-    while (cacheQueue.size > 0 || processingQueue.size > 0) {
+    while ((cacheQueue.size > 0 || processingQueue.size > 0) && !queueProcessorStopped) {
       const urlsToProcess: string[] = [];
       for (const url of cacheQueue) {
         if (urlsToProcess.length >= QUEUE_CONCURRENCY) break;
@@ -827,6 +828,26 @@ export async function queueMissingImages(prisma: PrismaClient): Promise<{
   }
 }
 
+/**
+ * Stop the cache queue processor and clear all queues.
+ * Call this when shutting down the application.
+ */
+export function stopCacheQueue(): void {
+  queueProcessorStopped = true;
+  cacheQueue.clear();
+  processingQueue.clear();
+}
+
+/**
+ * Reset the cache queue (for testing purposes).
+ */
+export function resetCacheQueue(): void {
+  queueProcessorStopped = false;
+  queueProcessorRunning = false;
+  cacheQueue.clear();
+  processingQueue.clear();
+}
+
 export default {
   cacheImage,
   cacheImages,
@@ -841,4 +862,6 @@ export default {
   getCachedImageUrl,
   getCachedImageUrls,
   queueMissingImages,
+  stopCacheQueue,
+  resetCacheQueue,
 };

@@ -61,7 +61,12 @@ class JobSchedulerImpl implements JobScheduler {
       });
 
       if (job.options.runOnStart) {
-        setImmediate(() => this.runJob(name));
+        setImmediate(() => {
+          // Check if scheduler is still running before executing
+          if (this.isRunning && this.jobs.has(name)) {
+            this.runJob(name);
+          }
+        });
       }
     }
   }
@@ -77,6 +82,10 @@ class JobSchedulerImpl implements JobScheduler {
     }
 
     this.isRunning = false;
+    this.jobs.clear();
+
+    // Reset singleton so new tests get a fresh scheduler
+    schedulerInstance = null;
   }
 
   async runJob(name: string): Promise<unknown> {

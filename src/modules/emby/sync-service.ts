@@ -7,6 +7,7 @@
 import { createEmbyClient } from './client.js';
 import { readFile, readdir } from 'fs/promises';
 import { decryptApiKey } from '../../utils/api-key-crypto.js';
+import { SEARCH_RESULTS_LIMIT, SYNC_LOG_ERROR_LIMIT, SYNC_LOG_MATCHED_ITEMS_LIMIT } from '../../config/constants.js';
 import type { PrismaClient, Collection, CollectionItem, EmbyServer } from '@prisma/client';
 
 interface CollectionWithItems {
@@ -215,9 +216,9 @@ export async function syncCollectionToEmby({
         itemsTotal: result.itemsTotal,
         itemsMatched: result.itemsMatched,
         itemsFailed: result.itemsFailed,
-        errorMessage: result.errors.length > 0 ? result.errors.slice(0, 10).join('; ') : null,
+        errorMessage: result.errors.length > 0 ? result.errors.slice(0, SYNC_LOG_ERROR_LIMIT).join('; ') : null,
         details: JSON.stringify({
-          matchedItems: result.matchedItems.slice(0, 50),
+          matchedItems: result.matchedItems.slice(0, SYNC_LOG_MATCHED_ITEMS_LIMIT),
           errors: result.errors.slice(0, 20),
         }),
         completedAt: new Date(),

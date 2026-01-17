@@ -9,6 +9,7 @@ import refreshCollectionsJob from '../jobs/refresh-collections.js';
 import { syncAllToEmby } from '../jobs/sync-to-emby.js';
 import cacheCleanupJob from '../jobs/cache-cleanup.js';
 import imageCacheQueueJob from '../jobs/image-cache-queue.js';
+import { stopCacheQueue } from '../utils/image-cache.js';
 import type { FastifyInstance } from 'fastify';
 
 async function jobsPlugin(fastify: FastifyInstance): Promise<void> {
@@ -62,6 +63,7 @@ async function jobsPlugin(fastify: FastifyInstance): Promise<void> {
   });
 
   fastify.addHook('onClose', async () => {
+    stopCacheQueue();
     scheduler.stop();
   });
 }
