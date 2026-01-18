@@ -6,9 +6,16 @@ export const config: AppConfig = {
     host: process.env.HOST || '0.0.0.0',
     env: process.env.NODE_ENV || 'development',
   },
+  auth: {
+    disabled: process.env.DISABLE_AUTH === 'true',
+  },
   jwt: {
     secret: (() => {
       const secret = process.env.JWT_SECRET;
+      // Skip validation if auth is disabled
+      if (process.env.DISABLE_AUTH === 'true') {
+        return secret || 'not-used-when-auth-disabled';
+      }
       if (!secret) {
         throw new Error('JWT_SECRET environment variable is required');
       }

@@ -17,6 +17,9 @@ export interface AppConfig {
     host: string;
     env: string;
   };
+  auth: {
+    disabled: boolean;
+  };
   jwt: {
     secret: string;
     expiresIn: string;

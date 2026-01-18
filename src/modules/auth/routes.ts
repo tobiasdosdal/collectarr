@@ -12,10 +12,12 @@ const setupSchema = z.object({
 export default async function authRoutes(fastify: FastifyInstance): Promise<void> {
   // Setup status - check if initial setup is needed
   fastify.get('/setup/status', async () => {
+    const authDisabled = fastify.config.auth.disabled;
     const userCount = await fastify.prisma.user.count();
     return {
-      setupRequired: userCount === 0,
+      setupRequired: userCount === 0 && !authDisabled,
       hasAdmin: userCount > 0,
+      authDisabled,
     };
   });
 
@@ -187,6 +189,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       select: {
         traktAccessToken: true,
         mdblistApiKey: true,
+        tmdbApiKey: true,
       },
     });
 
@@ -194,6 +197,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       ...user,
       traktConnected: !!settings?.traktAccessToken,
       mdblistConnected: !!settings?.mdblistApiKey,
+      tmdbConnected: !!settings?.tmdbApiKey,
     };
   });
 

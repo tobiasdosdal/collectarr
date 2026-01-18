@@ -16,6 +16,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   setupRequired: boolean;
+  authDisabled: boolean;
   login: (email: string, password: string) => Promise<any>;
   setup: (email: string, password: string) => Promise<any>;
   register: (email: string, password: string) => Promise<any>;
@@ -29,17 +30,42 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+// Default user when auth is disabled (e.g., when using Authelia)
+const AUTH_DISABLED_USER: User = {
+  id: 'auth-disabled-user',
+  email: 'admin@localhost',
+  apiKey: '',
+  isAdmin: true,
+  traktConnected: false,
+  mdblistConnected: false,
+  tmdbConnected: false,
+  createdAt: new Date().toISOString(),
+};
+
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [setupRequired, setSetupRequired] = useState(false);
+  const [authDisabled, setAuthDisabled] = useState(false);
 
   useEffect(() => {
     // Check setup status first
     api.getSetupStatus()
       .then((status: any) => {
         setSetupRequired(status.setupRequired);
-        
+        setAuthDisabled(status.authDisabled || false);
+
+        // If auth is disabled, set the default user and skip login
+        if (status.authDisabled) {
+          // Fetch actual user data from /me endpoint (works without token when auth disabled)
+          return api.getMe()
+            .then((userData: any) => setUser(userData))
+            .catch(() => {
+              // Fallback to default user if /me fails
+              setUser(AUTH_DISABLED_USER);
+            });
+        }
+
         // Only try to load user if setup is complete
         if (!status.setupRequired) {
           const token = localStorage.getItem('token');
@@ -97,7 +123,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, setupRequired, login, setup, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, setupRequired, authDisabled, login, setup, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

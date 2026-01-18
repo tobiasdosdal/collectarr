@@ -2,7 +2,19 @@ import fp from 'fastify-plugin';
 import jwt from '@fastify/jwt';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
+const DEFAULT_AUTH_DISABLED_USER = {
+  id: 'auth-disabled-user',
+  email: 'admin@localhost',
+  isAdmin: true,
+};
+
 async function authPlugin(fastify: FastifyInstance): Promise<void> {
+  const authDisabled = fastify.config.auth.disabled;
+
+  if (authDisabled) {
+    fastify.log.warn('Authentication is disabled via DISABLE_AUTH=true. All requests will be treated as authenticated admin.');
+  }
+
   await fastify.register(jwt, {
     secret: fastify.config.jwt.secret,
     sign: {
@@ -11,6 +23,10 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
   });
 
   fastify.decorate('authenticateJwt', async function (request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    if (authDisabled) {
+      request.user = DEFAULT_AUTH_DISABLED_USER;
+      return;
+    }
     try {
       await request.jwtVerify();
     } catch {
@@ -19,6 +35,11 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
   });
 
   fastify.decorate('authenticateApiKey', async function (request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    if (authDisabled) {
+      request.user = DEFAULT_AUTH_DISABLED_USER;
+      return;
+    }
+
     const apiKey = request.headers['x-acdb-key'] as string | undefined;
 
     if (!apiKey) {
@@ -40,6 +61,11 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
   });
 
   fastify.decorate('authenticate', async function (request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    if (authDisabled) {
+      request.user = DEFAULT_AUTH_DISABLED_USER;
+      return;
+    }
+
     const apiKey = request.headers['x-acdb-key'] as string | undefined;
     if (apiKey) {
       const user = await fastify.prisma.user.findUnique({
