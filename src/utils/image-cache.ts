@@ -69,11 +69,19 @@ async function ensureCacheDir(): Promise<void> {
 async function cleanupTempFiles(): Promise<void> {
   try {
     const files = await fs.readdir(CACHE_DIR);
+    const now = Date.now();
+    const MAX_TEMP_AGE_MS = 60000; // Only cleanup temp files older than 1 minute
+
     for (const file of files) {
       if (file.endsWith('.tmp')) {
         const filepath = path.join(CACHE_DIR, file);
         try {
-          await fs.unlink(filepath);
+          const stats = await fs.stat(filepath);
+          // Only delete temp files that are older than MAX_TEMP_AGE_MS
+          // This prevents deleting files that are currently being processed
+          if (now - stats.mtimeMs > MAX_TEMP_AGE_MS) {
+            await fs.unlink(filepath);
+          }
         } catch (err) {
           if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
             console.warn(`Failed to remove temp file ${file}:`, (err as Error).message);
@@ -501,7 +509,9 @@ export async function cacheImage(url: string, retryCount = 0): Promise<string | 
       return null;
     }
 
-    const tempPath = `${filepath}.tmp`;
+    // Use unique temp filename to avoid race conditions with cleanup
+    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tempPath = `${filepath}.${uniqueSuffix}.tmp`;
     await fs.writeFile(tempPath, buffer);
 
     const isValid = await validateImageFile(tempPath);
@@ -511,7 +521,13 @@ export async function cacheImage(url: string, retryCount = 0): Promise<string | 
       return null;
     }
 
-    await fs.rename(tempPath, filepath);
+    try {
+      await fs.rename(tempPath, filepath);
+    } catch (renameError) {
+      // If rename fails, try to clean up temp file
+      await fs.unlink(tempPath).catch(() => {});
+      throw renameError;
+    }
 
     await saveMetadata(filename, {
       url,

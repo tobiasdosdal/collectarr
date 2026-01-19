@@ -62,8 +62,14 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        scriptSrc: [
+          "'self'",
+          "'sha256-pkq1WG0fvNqhhPf9b8/++ANAA6tOhzwZ17RtfGFn3Ig='",
+          "'sha256-DS97OS7uZmj3HONyxF0mkdle4qsonqV6aHwgjIrJ3V0='",
+          "'sha256-ZswfTY7H35rbv8WC7NXBoiC7WNu86vSzCDChNWwZZDM='",
+        ],
         imgSrc: ["'self'", "data:", "https:"],
       },
     },
