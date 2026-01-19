@@ -15,8 +15,10 @@ const MIN_FILE_SIZE = 100;
 
 const cacheQueue = new Set<string>();
 const processingQueue = new Set<string>();
+const notFoundUrls = new Set<string>(); // Track URLs that returned 404
 let queueProcessorRunning = false;
 let queueProcessorStopped = false;
+let prismaRef: PrismaClient | null = null; // Reference to Prisma for cleanup operations
 const QUEUE_CONCURRENCY = 2; // Reduced from 5 to respect TMDB rate limits
 const RATE_LIMIT_DELAY_MS = 600; // 600ms between requests (40 req/10 sec = 250ms, but be conservative)
 
@@ -153,6 +155,15 @@ async function processCacheQueue(): Promise<void> {
     }
 
     console.log(`Cache queue processor finished. Total: ${processedCount} cached, ${failedCount} failed`);
+
+    // Clear any 404 URLs from the database
+    if (prismaRef && notFoundUrls.size > 0) {
+      try {
+        await clearInvalidImageUrls(prismaRef);
+      } catch (err) {
+        console.error('Error clearing invalid image URLs:', (err as Error).message);
+      }
+    }
   } catch (error) {
     console.error('Error in cache queue processor:', (error as Error).message);
   } finally {
@@ -499,6 +510,10 @@ export async function cacheImage(url: string, retryCount = 0): Promise<string | 
 
     if (!response.ok) {
       console.error(`Failed to download image: ${url} - ${response.status} ${response.statusText}`);
+      // Track 404 URLs so they can be cleared from the database
+      if (response.status === 404) {
+        notFoundUrls.add(url);
+      }
       return null;
     }
 
@@ -790,6 +805,9 @@ export async function queueMissingImages(prisma: PrismaClient): Promise<{
   queueSize?: number;
   error?: string;
 }> {
+  // Store Prisma reference for cleanup operations after queue processing
+  prismaRef = prisma;
+
   try {
     const items = await prisma.collectionItem.findMany({
       where: {
@@ -852,6 +870,8 @@ export function stopCacheQueue(): void {
   queueProcessorStopped = true;
   cacheQueue.clear();
   processingQueue.clear();
+  notFoundUrls.clear();
+  prismaRef = null;
 }
 
 /**
@@ -862,6 +882,69 @@ export function resetCacheQueue(): void {
   queueProcessorRunning = false;
   cacheQueue.clear();
   processingQueue.clear();
+  notFoundUrls.clear();
+  prismaRef = null;
+}
+
+/**
+ * Get URLs that returned 404 and clear the tracking set.
+ */
+export function getAndClearNotFoundUrls(): string[] {
+  const urls = Array.from(notFoundUrls);
+  notFoundUrls.clear();
+  return urls;
+}
+
+/**
+ * Clear invalid image URLs from the database.
+ * This removes posterPath and backdropPath references to images that returned 404.
+ */
+export async function clearInvalidImageUrls(prisma: PrismaClient): Promise<{
+  cleared: number;
+  urls: string[];
+}> {
+  const urls = getAndClearNotFoundUrls();
+
+  if (urls.length === 0) {
+    return { cleared: 0, urls: [] };
+  }
+
+  console.log(`Clearing ${urls.length} invalid image URLs from database...`);
+
+  let cleared = 0;
+
+  for (const url of urls) {
+    try {
+      // Clear posterPath references
+      const posterResult = await prisma.collectionItem.updateMany({
+        where: { posterPath: url },
+        data: { posterPath: null },
+      });
+
+      // Clear backdropPath references
+      const backdropResult = await prisma.collectionItem.updateMany({
+        where: { backdropPath: url },
+        data: { backdropPath: null },
+      });
+
+      const count = posterResult.count + backdropResult.count;
+      if (count > 0) {
+        console.log(`Cleared ${count} references to invalid image: ${url}`);
+        cleared += count;
+      }
+
+      // Also delete the metadata file if it exists
+      const filename = getCacheFilename(url);
+      const metadataPath = path.join(METADATA_DIR, `${filename}.json`);
+      await fs.unlink(metadataPath).catch(() => {});
+    } catch (error) {
+      console.error(`Error clearing invalid image URL ${url}:`, (error as Error).message);
+    }
+  }
+
+  console.log(`Cleared ${cleared} total invalid image references`);
+
+  return { cleared, urls };
 }
 
 export default {
@@ -880,4 +963,6 @@ export default {
   queueMissingImages,
   stopCacheQueue,
   resetCacheQueue,
+  getAndClearNotFoundUrls,
+  clearInvalidImageUrls,
 };
