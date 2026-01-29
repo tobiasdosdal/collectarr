@@ -10,6 +10,7 @@ import { cacheImage } from '../../utils/image-cache.js';
 import { syncCollections } from '../emby/sync-service.js';
 import { refreshFromMdblist, fetchMdblistItemDetails } from './helpers/refresh-mdblist.js';
 import { refreshFromTrakt } from './helpers/refresh-trakt.js';
+import { generateCollectionPoster } from '../../utils/collection-poster.js';
 
 export interface CollectionServiceOptions {
   prisma: PrismaClient;
@@ -183,6 +184,37 @@ export class CollectionService {
           where: { id: collectionId },
           data: { lastItemAddedAt: new Date() },
         });
+        
+        const itemPosters = enrichedItems
+          .slice(0, 4)
+          .map(item => item.posterPath)
+          .filter(Boolean) as string[];
+        
+        if (itemPosters.length > 0) {
+          const collection = await this.prisma.collection.findUnique({
+            where: { id: collectionId },
+            select: { name: true },
+          });
+          
+          if (collection) {
+            generateCollectionPoster({
+              collectionId,
+              collectionName: collection.name,
+              itemCount: addedCount,
+              itemPosterPaths: itemPosters,
+            }).then(async (posterUrl) => {
+              if (posterUrl) {
+                await this.prisma.collection.update({
+                  where: { id: collectionId },
+                  data: { posterPath: posterUrl },
+                });
+                this.log.info(`Generated collage poster for collection ${collectionId}`);
+              }
+            }).catch(err => {
+              this.log.warn(`Failed to generate poster for collection ${collectionId}: ${err.message}`);
+            });
+          }
+        }
       }
       
       return addedCount;

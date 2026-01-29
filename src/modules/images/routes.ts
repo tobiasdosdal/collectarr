@@ -232,4 +232,50 @@ export default async function imageRoutes(fastify: FastifyInstance): Promise<voi
       return reply.code(500).send({ error: 'Internal server error' });
     }
   });
+
+  // Serve generated collection collage posters
+  fastify.get<{ Params: { filename: string } }>('/collage/:filename', async (request, reply) => {
+    const { filename } = request.params;
+    
+    // Validate filename to prevent directory traversal
+    if (!filename.match(/^[a-zA-Z0-9_-]+\.png$/)) {
+      return reply.code(400).send({ error: 'Invalid filename' });
+    }
+    
+    const filepath = `./uploads/posters/${filename}`;
+    
+    try {
+      const fs = await import('fs/promises');
+      const buffer = await fs.readFile(filepath);
+      
+      const stat = await fs.stat(filepath);
+      const lastModified = stat.mtime.toUTCString();
+      const etag = `collage-${stat.mtime.getTime()}`;
+      
+      const ifNoneMatch = request.headers['if-none-match'];
+      if (ifNoneMatch && ifNoneMatch === etag) {
+        return reply
+          .code(304)
+          .header('ETag', etag)
+          .header('Last-Modified', lastModified)
+          .header('Cache-Control', 'public, max-age=86400')
+          .send();
+      }
+      
+      return reply
+        .code(200)
+        .header('Content-Type', 'image/png')
+        .header('Cache-Control', 'public, max-age=86400')
+        .header('ETag', etag)
+        .header('Last-Modified', lastModified)
+        .header('Content-Length', buffer.length)
+        .send(buffer);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return reply.code(404).send({ error: 'Collage not found' });
+      }
+      fastify.log.error({ err }, 'Error serving collage');
+      return reply.code(500).send({ error: 'Internal server error' });
+    }
+  });
 }
