@@ -22,4 +22,4 @@ RUN mkdir -p /app/data
 EXPOSE 3000 5173
 
 # Run with watch mode (both server and client)
-CMD ["sh", "-c", "npx prisma db push && npm run dev"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm run dev"]

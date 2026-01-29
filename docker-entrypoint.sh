@@ -29,7 +29,7 @@ fi
 
 # Run database migrations
 echo "Running database migrations..."
-npx prisma db push --skip-generate
+npx prisma db push --skip-generate --accept-data-loss
 
 # Start the app
 exec node dist-server/server.js
