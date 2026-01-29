@@ -1,14 +1,16 @@
-import { Jimp } from 'jimp';
+import { createCanvas, loadImage } from 'canvas';
 import path from 'path';
 import fs from 'fs/promises';
 
 const POSTER_WIDTH = 500;
 const POSTER_HEIGHT = 750;
 const UPLOADS_DIR = './uploads/posters';
-
-function rgbaToInt(r: number, g: number, b: number, a: number): number {
-  return (r << 24) + (g << 16) + (b << 8) + a;
-}
+const THUMB_WIDTH = 250;
+const THUMB_HEIGHT = 225;
+const GRID_Y_OFFSET = 80;
+const BAR_HEIGHT = 80;
+const MAX_TITLE_LENGTH = 25;
+const FONT_SIZE = 26;
 
 interface CollectionPosterOptions {
   collectionId: string;
@@ -20,34 +22,27 @@ interface CollectionPosterOptions {
 export async function generateCollectionPoster(
   options: CollectionPosterOptions
 ): Promise<string | null> {
-  const { collectionId, itemPosterPaths } = options;
+  const { collectionId, collectionName, itemPosterPaths } = options;
 
   try {
     await fs.mkdir(UPLOADS_DIR, { recursive: true });
 
-    const poster = new Jimp({ width: POSTER_WIDTH, height: POSTER_HEIGHT, color: 0x1a1a2eFF });
+    const canvas = createCanvas(POSTER_WIDTH, POSTER_HEIGHT);
+    const ctx = canvas.getContext('2d');
 
-    for (let y = 0; y < POSTER_HEIGHT; y++) {
-      const ratio = y / POSTER_HEIGHT;
-      const r = Math.floor(26 + (45 - 26) * ratio);
-      const g = Math.floor(26 + (27 - 26) * ratio);
-      const b = Math.floor(46 + (90 - 46) * ratio);
-      
-      for (let x = 0; x < POSTER_WIDTH; x++) {
-        poster.setPixelColor(rgbaToInt(r, g, b, 255), x, y);
-      }
-    }
+    drawGradientBackground(ctx);
 
     const thumbnailsToShow = itemPosterPaths.slice(0, 4);
     if (thumbnailsToShow.length > 0) {
-      await addThumbnailGrid(poster, thumbnailsToShow);
+      await drawThumbnailGrid(ctx, thumbnailsToShow);
     }
 
-    await addTextOverlay(poster);
+    drawBottomBar(ctx, collectionName);
 
     const filename = `collage-${collectionId}.png`;
     const filepath = path.join(UPLOADS_DIR, filename);
-    await poster.write(filepath as `${string}.${string}`);
+    const buffer = canvas.toBuffer('image/png');
+    await fs.writeFile(filepath, buffer);
 
     return `/api/v1/images/collage/${filename}`;
   } catch (error) {
@@ -56,58 +51,85 @@ export async function generateCollectionPoster(
   }
 }
 
-async function addThumbnailGrid(poster: InstanceType<typeof Jimp>, thumbnailPaths: string[]): Promise<void> {
-  const thumbWidth = POSTER_WIDTH / 2;
-  const thumbHeight = (POSTER_HEIGHT * 0.6) / 2;
+function drawGradientBackground(ctx: ReturnType<typeof createCanvas>['getContext'] extends (arg: '2d') => infer R ? R : never): void {
+  const gradient = ctx.createLinearGradient(0, 0, 0, POSTER_HEIGHT);
+  gradient.addColorStop(0, '#1a1a2e');
+  gradient.addColorStop(1, '#2d1b5a');
 
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+}
+
+async function drawThumbnailGrid(
+  ctx: ReturnType<typeof createCanvas>['getContext'] extends (arg: '2d') => infer R ? R : never,
+  thumbnailPaths: string[]
+): Promise<void> {
   for (let i = 0; i < thumbnailPaths.length && i < 4; i++) {
     const row = Math.floor(i / 2);
     const col = i % 2;
-    const x = col * thumbWidth;
-    const y = 80 + (row * thumbHeight);
+    const x = col * THUMB_WIDTH;
+    const y = GRID_Y_OFFSET + (row * THUMB_HEIGHT);
 
     try {
       const thumbPath = thumbnailPaths[i];
       if (!thumbPath) continue;
-      
-      let thumbBuffer: Buffer | null = null;
+
+      let imagePath: string;
       
       if (thumbPath.startsWith('/')) {
-        const fullPath = `.${thumbPath}`;
-        try {
-          await fs.access(fullPath);
-          thumbBuffer = await fs.readFile(fullPath);
-        } catch {}
-      } else if (thumbPath.startsWith('http')) {
-        const response = await fetch(thumbPath);
-        if (response.ok) {
-          const arrayBuffer = await response.arrayBuffer();
-          thumbBuffer = Buffer.from(arrayBuffer);
-        }
+        imagePath = `.${thumbPath}`;
+      } else {
+        imagePath = thumbPath;
       }
 
-      if (thumbBuffer) {
-        const thumb = await Jimp.read(thumbBuffer);
-        thumb.resize({ w: Math.floor(thumbWidth), h: Math.floor(thumbHeight) });
-        poster.composite(thumb, x, y);
-      }
-    } catch {}
-  }
-}
-
-async function addTextOverlay(poster: InstanceType<typeof Jimp>): Promise<void> {
-  const barHeight = 80;
-  const barY = POSTER_HEIGHT - barHeight;
-  
-  for (let y = barY; y < POSTER_HEIGHT; y++) {
-    for (let x = 0; x < POSTER_WIDTH; x++) {
-      poster.setPixelColor(rgbaToInt(0, 0, 0, 200), x, y);
+      const image = await loadImage(imagePath);
+      ctx.drawImage(image, x, y, THUMB_WIDTH, THUMB_HEIGHT);
+    } catch {
+      // Thumbnail loading failed - continue with remaining thumbnails
     }
   }
 }
 
+function drawBottomBar(
+  ctx: ReturnType<typeof createCanvas>['getContext'] extends (arg: '2d') => infer R ? R : never,
+  collectionName: string
+): void {
+  const barY = POSTER_HEIGHT - BAR_HEIGHT;
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+  ctx.fillRect(0, barY, POSTER_WIDTH, BAR_HEIGHT);
+
+  const title = collectionName.length > MAX_TITLE_LENGTH
+    ? collectionName.slice(0, MAX_TITLE_LENGTH - 3) + '...'
+    : collectionName;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${FONT_SIZE}px Arial, "Helvetica Neue", Helvetica, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  
+  const textX = POSTER_WIDTH / 2;
+  const textY = barY + (BAR_HEIGHT / 2);
+  ctx.fillText(title, textX, textY);
+}
+
+interface PrismaCollection {
+  id: string;
+  name: string;
+  items: { posterPath: string | null }[];
+  _count: { items: number };
+}
+
 export async function regenerateAllCollectionPosters(
-  prisma: any
+  prisma: { collection: { findMany: (args: {
+    include: {
+      items: { take: number; orderBy: { createdAt: string }; select: { posterPath: boolean } };
+      _count: { select: { items: boolean } };
+    };
+  }) => Promise<PrismaCollection[]>; update: (args: {
+    where: { id: string };
+    data: { posterPath: string };
+  }) => Promise<void>; } }
 ): Promise<{ generated: number; failed: number }> {
   const collections = await prisma.collection.findMany({
     include: {
@@ -125,8 +147,8 @@ export async function regenerateAllCollectionPosters(
 
   for (const collection of collections) {
     const itemPaths = collection.items
-      .map((item: { posterPath: string | null }) => item.posterPath)
-      .filter((path: string | null): path is string => Boolean(path));
+      .map((item) => item.posterPath)
+      .filter((p): p is string => Boolean(p));
 
     if (itemPaths.length === 0) {
       failed++;
