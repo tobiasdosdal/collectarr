@@ -9,8 +9,11 @@ A self-hosted media collection manager that syncs curated lists with your Emby l
 - **Emby Integration** - Connect your Emby server to track which items from your collections are in your library
 - **List Imports** - Import collections from MDBList and Trakt
 - **Radarr/Sonarr Integration** - Request missing movies and TV shows directly to your download managers
+- **Automatic Collections** - Collections auto-refresh every 24 hours and auto-sync to Emby
 - **Multi-User Support** - Multiple users with admin/user roles
-- **Automatic Sync** - Schedule collection syncs to keep everything up to date
+- **External Auth Support** - Optional `DISABLE_AUTH` mode for Authelia/Authentik integration
+- **Image Caching** - Automatic poster/backdrop caching with TMDB fallback
+- **Smart Refresh** - Optimized MDBList refresh with batch processing (10x faster)
 
 
 ## Screenshots
@@ -67,6 +70,7 @@ npm start
 | `ENCRYPTION_KEY` | Auto* | Key for encrypting API keys (min 32 chars) |
 | `PORT` | No | Server port (default: 7795) |
 | `DATABASE_URL` | No | SQLite database path |
+| `DISABLE_AUTH` | No | Disable auth for external auth (Authelia/Authentik) |
 | `MDBLIST_API_KEY` | No | Default MDBList API key |
 | `TMDB_API_KEY` | No | TMDb API for poster fallback |
 | `TRAKT_CLIENT_ID` | No | Trakt OAuth client ID |
@@ -91,6 +95,21 @@ Get your API key from [mdblist.com/preferences](https://mdblist.com/preferences)
 
 #### Trakt
 Create an application at [trakt.tv/oauth/applications](https://trakt.tv/oauth/applications) to enable Trakt list imports.
+
+### External Authentication (Optional)
+
+Set `DISABLE_AUTH=true` to disable built-in authentication. Useful when using external auth like Authelia or Authentik:
+
+```yaml
+services:
+  collectarr:
+    image: ghcr.io/tobiasdosdal/collectarr:latest
+    environment:
+      - DISABLE_AUTH=true
+    # ... other config
+```
+
+**Note**: When disabled, all requests are treated as authenticated admin user.
 
 ## Development
 
@@ -154,6 +173,10 @@ docker run -d -p 8080:7795 -v ./data:/app/data ghcr.io/tobiasdosdal/collectarr:l
 ```bash
 docker compose up -d --build
 ```
+
+## Contributing
+
+See [AGENTS.md](AGENTS.md) for coding guidelines and development standards.
 
 ## License
 
