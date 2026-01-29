@@ -130,6 +130,44 @@ npm test
 npm run lint
 ```
 
+## CI/CD (Manual)
+
+This project uses **manual CI/CD triggers** for better control:
+
+### Running CI
+
+CI runs automatically on Pull Requests for validation. To run CI manually:
+
+**Via GitHub UI:**
+1. Go to [Actions → CI](https://github.com/tobiasdosdal/collectarr/actions/workflows/ci.yml)
+2. Click "Run workflow"
+3. Select branch and click "Run workflow"
+
+**Via CLI:**
+```bash
+gh workflow run ci.yml --ref main
+```
+
+### Creating a Release
+
+**Via GitHub UI:**
+1. Go to [Actions → Release](https://github.com/tobiasdosdal/collectarr/actions/workflows/release.yml)
+2. Click "Run workflow"
+3. Enter tag (e.g., `v0.0.6`)
+4. Click "Run workflow"
+
+**Via CLI:**
+```bash
+# Create and push a tag first
+git tag -a v0.0.6 -m "Release v0.0.6"
+git push origin v0.0.6
+
+# Then trigger release workflow
+gh workflow run release.yml --ref v0.0.6 -f tag=v0.0.6
+```
+
+The workflow will build multi-arch Docker images (amd64 + arm64) and push to GHCR.
+
 ## Architecture
 
 - **Backend**: Fastify, Prisma, TypeScript
