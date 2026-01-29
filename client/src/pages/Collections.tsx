@@ -586,10 +586,6 @@ const CreateCollectionModal: FC<CreateCollectionModalProps> = ({ onClose, onCrea
         name,
         description,
         sourceType: 'MANUAL',
-        refreshIntervalHours: 24,
-        syncToEmbyOnRefresh: true,
-        removeFromEmby: false,
-        embyServerIds: [],
       });
       onCreated(collection);
     } catch (err: any) {

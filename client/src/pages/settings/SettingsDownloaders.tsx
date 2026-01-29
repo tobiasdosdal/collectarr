@@ -5,7 +5,6 @@ import { ConfirmationModal } from '../../components/ConfirmationModal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  Server,
   Plus,
   Trash2,
   X,

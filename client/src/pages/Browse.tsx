@@ -448,10 +448,6 @@ const AddFromSourceModal: FC<AddFromSourceModalProps> = ({ source, sourceId, sou
         name,
         sourceType: source,
         sourceId: sourceId || undefined,
-        refreshIntervalHours: 24,
-        syncToEmbyOnRefresh: true,
-        removeFromEmby: false,
-        embyServerIds: [],
       };
       const collection = await api.createCollection(payload);
       navigate(`/collections/${collection.id}`);

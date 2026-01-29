@@ -19,7 +19,6 @@ import {
   Server,
   ChevronDown,
   Loader2,
-  Settings,
   Clock,
   CheckCircle,
   XCircle,
@@ -59,13 +58,6 @@ interface SonarrServer {
   rootFolderPath?: string;
 }
 
-interface EmbyServer {
-  id: string;
-  name: string;
-  url: string;
-  isDefault: boolean;
-}
-
 interface ScheduleInfo {
   cronExpression: string;
   lastRun: string | null;
@@ -78,21 +70,10 @@ interface Collection {
   sourceType: string;
   posterPath?: string;
   items: CollectionItem[];
-  refreshIntervalHours?: number;
-  refreshTime?: string | null;
-  syncToEmbyOnRefresh?: boolean;
-  removeFromEmby?: boolean;
-  deleteFromEmbyOnDelete?: boolean;
-  embyServerIds?: string[];
   scheduleInfo?: ScheduleInfo | null;
 }
 
-interface CollectionSettingsModalProps {
-  collection: Collection;
-  embyServers: EmbyServer[];
-  onClose: () => void;
-  onSaved: (updated: Collection) => void;
-}
+
 
 interface Stats {
   total: number;
@@ -136,7 +117,6 @@ const CollectionDetail: FC = () => {
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [lastSyncLog, setLastSyncLog] = useState<SyncLog | null>(null);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
-  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [filter, setFilter] = useState<'all' | 'inLibrary' | 'missing'>('all');
   const [sortBy, setSortBy] = useState<'addedAt' | 'title' | 'year' | 'rating'>('addedAt');
   const [stats, setStats] = useState<Stats | null>(null);
@@ -144,7 +124,7 @@ const CollectionDetail: FC = () => {
   const posterInputRef = useRef<HTMLInputElement>(null);
   const [radarrServers, setRadarrServers] = useState<RadarrServer[]>([]);
   const [sonarrServers, setSonarrServers] = useState<SonarrServer[]>([]);
-  const [embyServers, setEmbyServers] = useState<EmbyServer[]>([]);
+
   const [requestingItems, setRequestingItems] = useState<Record<string, boolean>>({});
   const [requestedItems, setRequestedItems] = useState<Record<string, 'success' | 'error'>>({});
   const [itemsInRadarr, setItemsInRadarr] = useState<Set<string>>(new Set());
@@ -156,9 +136,8 @@ const CollectionDetail: FC = () => {
   const hasAutoStartedPolling = useRef<boolean>(false);
   const [confirmAction, setConfirmAction] = useState<'deleteCollection' | 'deletePoster' | null>(null);
 
-  // Start polling when refresh button is clicked
   const startPolling = () => {
-    if (pollIntervalRef.current) return; // Already polling
+    if (pollIntervalRef.current) return;
 
     setIsPolling(true);
     let noChangeCount = 0;
@@ -166,26 +145,29 @@ const CollectionDetail: FC = () => {
 
     pollIntervalRef.current = setInterval(async () => {
       try {
-        // Use the api client which includes auth token
         const updatedCollection = await api.getCollection(id!);
         setCollection(updatedCollection);
 
         const currentItemCount = updatedCollection.items?.length || 0;
 
+        if (currentItemCount > 0 && lastItemCount === 0) {
+          setRefreshing(false);
+        }
+
         if (currentItemCount === lastItemCount) {
           noChangeCount++;
-          // Stop polling after 5 seconds of no changes
-          if (noChangeCount >= 5 && pollIntervalRef.current) {
+          if (noChangeCount >= 30 && pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = undefined;
             setIsPolling(false);
+            setRefreshing(false);
+            loadStats();
           }
         } else {
-          noChangeCount = 0; // Reset counter if items were added
+          noChangeCount = 0;
           lastItemCount = currentItemCount;
         }
       } catch (err) {
-        // Silently fail - this is just polling for updates
         console.warn('Polling error:', err);
       }
     }, 1000);
@@ -209,7 +191,7 @@ const CollectionDetail: FC = () => {
       loadStats();
       loadSyncLogs();
       loadDownloadServers();
-      loadEmbyServers();
+
     }
   }, [id]);
 
@@ -226,15 +208,6 @@ const CollectionDetail: FC = () => {
       startPolling();
     }
   }, [collection?.id, loading]);
-
-  const loadEmbyServers = async (): Promise<void> => {
-    try {
-      const servers = await api.getEmbyServers();
-      setEmbyServers(servers as EmbyServer[]);
-    } catch (err) {
-      console.error('Failed to load Emby servers:', err);
-    }
-  };
 
   const loadDownloadServers = async (): Promise<void> => {
     setLoadingDownloadStatus(true);
@@ -327,14 +300,11 @@ const CollectionDetail: FC = () => {
   const handleRefresh = async (): Promise<void> => {
     setRefreshing(true);
     try {
-      // Start polling immediately to see items being added in real-time
-      startPolling();
       await api.refreshCollection(id!);
-      // Don't wait for loadCollection - polling handles updates
-      loadDownloadServers(); // Reload Radarr/Sonarr data in background
+      startPolling();
+      loadDownloadServers();
     } catch (err: any) {
       addToast(`Failed to refresh: ${err.message}`, 'error');
-    } finally {
       setRefreshing(false);
     }
   };
@@ -586,10 +556,6 @@ const CollectionDetail: FC = () => {
               Refresh
             </Button>
           )}
-          <Button variant="secondary" onClick={() => setShowSettingsModal(true)}>
-            <Settings size={16} className="mr-2" />
-            Settings
-          </Button>
           <Button onClick={handleSyncToEmby} disabled={syncing}>
             <Upload size={16} className={`mr-2 ${syncing ? 'animate-spin' : ''}`} />
             Sync to Emby
@@ -704,20 +670,30 @@ const CollectionDetail: FC = () => {
       {collection.items?.length === 0 ? (
         <div className="text-center py-16 rounded-2xl border border-dashed border-border bg-secondary/30">
           <div className="inline-flex p-4 rounded-full bg-secondary mb-4">
-            <Film size={32} className="text-muted-foreground" />
+            {refreshing ? (
+              <RefreshCw size={32} className="text-primary animate-spin" />
+            ) : (
+              <Film size={32} className="text-muted-foreground" />
+            )}
           </div>
-          <h3 className="text-lg font-semibold mb-2">No items in this collection</h3>
-          <p className="text-muted-foreground mb-6">Add items manually or refresh from the source</p>
-          {collection.sourceType === 'MANUAL' ? (
-            <Button onClick={() => setShowAddModal(true)}>
-              <Plus size={16} className="mr-2" />
-              Add Item
-            </Button>
-          ) : (
-            <Button onClick={handleRefresh} disabled={refreshing}>
-              <RefreshCw size={16} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh from Source
-            </Button>
+          <h3 className="text-lg font-semibold mb-2">
+            {refreshing ? 'Refreshing collection...' : 'No items in this collection'}
+          </h3>
+          <p className="text-muted-foreground mb-6">
+            {refreshing ? 'Items will appear shortly' : 'Add items manually or refresh from the source'}
+          </p>
+          {!refreshing && (
+            collection.sourceType === 'MANUAL' ? (
+              <Button onClick={() => setShowAddModal(true)}>
+                <Plus size={16} className="mr-2" />
+                Add Item
+              </Button>
+            ) : (
+              <Button onClick={handleRefresh} disabled={refreshing}>
+                <RefreshCw size={16} className="mr-2" />
+                Refresh from Source
+              </Button>
+            )
           )}
         </div>
       ) : (
@@ -925,18 +901,7 @@ const CollectionDetail: FC = () => {
         />
       )}
 
-      {showSettingsModal && collection && (
-        <CollectionSettingsModal
-          collection={collection}
-          embyServers={embyServers}
-          onClose={() => setShowSettingsModal(false)}
-          onSaved={(updated) => {
-            // Merge updated settings with existing collection, preserving items
-            setCollection({ ...collection, ...updated, items: collection.items });
-            setShowSettingsModal(false);
-          }}
-        />
-      )}
+
 
       {confirmAction === 'deleteCollection' && (
         <ConfirmationModal
@@ -1113,297 +1078,6 @@ const AddItemModal: FC<AddItemModalProps> = ({ collectionId, onClose, onAdded })
             </Button>
             <Button type="submit" className="flex-1" disabled={loading}>
               {loading ? 'Adding...' : 'Add Item'}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-const CollectionSettingsModal: FC<CollectionSettingsModalProps> = ({ collection, embyServers, onClose, onSaved }) => {
-  const [refreshIntervalValue, setRefreshIntervalValue] = useState<string>(
-    collection.refreshIntervalHours ? String(
-      collection.refreshIntervalHours >= 24 && collection.refreshIntervalHours % 24 === 0
-        ? collection.refreshIntervalHours / 24
-        : collection.refreshIntervalHours
-    ) : '6'
-  );
-  const [refreshIntervalUnit, setRefreshIntervalUnit] = useState<'hours' | 'days'>(
-    collection.refreshIntervalHours && collection.refreshIntervalHours >= 24 && collection.refreshIntervalHours % 24 === 0
-      ? 'days'
-      : 'hours'
-  );
-  const [refreshTime, setRefreshTime] = useState<string>(collection.refreshTime || '00:00');
-  const [syncToEmbyOnRefresh, setSyncToEmbyOnRefresh] = useState<boolean>(collection.syncToEmbyOnRefresh ?? true);
-  const [removeFromEmby, setRemoveFromEmby] = useState<boolean>(collection.removeFromEmby ?? false);
-  const [deleteFromEmbyOnDelete, setDeleteFromEmbyOnDelete] = useState<boolean>(collection.deleteFromEmbyOnDelete ?? false);
-  const [selectedEmbyServerIds, setSelectedEmbyServerIds] = useState<string[]>(
-    collection.embyServerIds || embyServers.map(s => s.id)
-  );
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string>('');
-
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      const refreshIntervalHours = refreshIntervalUnit === 'days'
-        ? parseInt(refreshIntervalValue, 10) * 24
-        : parseInt(refreshIntervalValue, 10);
-
-      const updated = await api.updateCollection(collection.id, {
-        refreshIntervalHours,
-        refreshTime,
-        syncToEmbyOnRefresh,
-        removeFromEmby,
-        deleteFromEmbyOnDelete,
-        embyServerIds: selectedEmbyServerIds,
-      });
-      onSaved(updated as Collection);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const toggleEmbyServer = (serverId: string): void => {
-    if (selectedEmbyServerIds.includes(serverId)) {
-      setSelectedEmbyServerIds(selectedEmbyServerIds.filter(id => id !== serverId));
-    } else {
-      setSelectedEmbyServerIds([...selectedEmbyServerIds, serverId]);
-    }
-  };
-
-  const selectAllServers = (): void => {
-    setSelectedEmbyServerIds(embyServers.map(s => s.id));
-  };
-
-  const deselectAllServers = (): void => {
-    setSelectedEmbyServerIds([]);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-card border border-border shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-6 border-b border-border sticky top-0 bg-card z-10">
-          <h2 className="text-lg font-semibold">Collection Settings</h2>
-          <button className="p-2 rounded-lg hover:bg-secondary transition-colors" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {error && (
-            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-              {error}
-            </div>
-          )}
-
-          <div className="space-y-3">
-            <label className="flex items-center gap-2 text-sm font-medium">
-              <Clock size={14} className="text-muted-foreground" />
-              Refresh Interval
-            </label>
-            <p className="text-xs text-muted-foreground mb-2">
-              How often to refresh items from the source
-            </p>
-            <div className="flex gap-2 mb-3">
-              <input
-                type="number"
-                value={refreshIntervalValue}
-                onChange={(e) => setRefreshIntervalValue(e.target.value)}
-                min="1"
-                max={refreshIntervalUnit === 'hours' ? '720' : '30'}
-                className="px-3 py-2.5 bg-secondary/50 border border-border/50 rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                style={{ maxWidth: '100px' }}
-              />
-              <select
-                value={refreshIntervalUnit}
-                onChange={(e) => setRefreshIntervalUnit(e.target.value as 'hours' | 'days')}
-                className="px-3 py-2.5 bg-secondary/50 border border-border/50 rounded-lg text-foreground text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50"
-              >
-                <option value="hours">Hours</option>
-                <option value="days">Days</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">Preferred refresh time (24-hour format)</label>
-              <div className="time-input">
-                <input
-                  type="number"
-                  value={refreshTime.split(':')[0]}
-                  onChange={(e) => {
-                    const hours = Math.max(0, Math.min(23, parseInt(e.target.value) || 0)).toString().padStart(2, '0');
-                    setRefreshTime(`${hours}:${refreshTime.split(':')[1]}`);
-                  }}
-                  min="0"
-                  max="23"
-                  className="px-3 py-2.5 bg-secondary/50 border border-border/50 rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-16"
-                  placeholder="00"
-                />
-                <span className="text-muted-foreground font-medium">:</span>
-                <input
-                  type="number"
-                  value={refreshTime.split(':')[1]}
-                  onChange={(e) => {
-                    const minutes = Math.max(0, Math.min(59, parseInt(e.target.value) || 0)).toString().padStart(2, '0');
-                    setRefreshTime(`${refreshTime.split(':')[0]}:${minutes}`);
-                  }}
-                  min="0"
-                  max="59"
-                  className="px-3 py-2.5 bg-secondary/50 border border-border/50 rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 w-16"
-                  placeholder="00"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">e.g., 14:30 = 2:30 PM, 00:00 = Midnight</p>
-            </div>
-          </div>
-
-          <div className="form-group mt-5">
-            <label className="flex items-center gap-3 cursor-pointer py-2">
-              <input
-                type="checkbox"
-                checked={syncToEmbyOnRefresh}
-                onChange={(e) => setSyncToEmbyOnRefresh(e.target.checked)}
-                className="w-5 h-5 rounded border-border accent-primary cursor-pointer"
-              />
-              <div>
-                <span className="font-medium">Auto sync to Emby on refresh</span>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Automatically sync collection to Emby after items are refreshed
-                </p>
-              </div>
-            </label>
-          </div>
-
-          <div className="form-group mt-3">
-            <label className="flex items-center gap-3 cursor-pointer py-2">
-              <input
-                type="checkbox"
-                checked={removeFromEmby}
-                onChange={(e) => setRemoveFromEmby(e.target.checked)}
-                className="w-5 h-5 rounded border-border accent-primary cursor-pointer"
-              />
-              <div>
-                <span className="font-medium">Remove items from Emby collection</span>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Remove items that are no longer in the source list from the Emby collection
-                </p>
-              </div>
-            </label>
-          </div>
-
-          <div className="form-group mt-3">
-            <label className="flex items-center gap-3 cursor-pointer py-2">
-              <input
-                type="checkbox"
-                checked={deleteFromEmbyOnDelete}
-                onChange={(e) => setDeleteFromEmbyOnDelete(e.target.checked)}
-                className="w-5 h-5 rounded border-border accent-primary cursor-pointer"
-              />
-              <div>
-                <span className="font-medium">Delete from Emby when collection is deleted</span>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Also delete the collection from Emby when you delete it from Collectarr
-                </p>
-              </div>
-            </label>
-          </div>
-
-          {embyServers.length > 0 && (
-            <div className="form-group mt-5">
-              <label className="flex items-center gap-2">
-                <Server size={14} className="text-muted-foreground" />
-                Sync to Emby Servers
-              </label>
-              <p className="text-xs text-muted-foreground mb-3">
-                Select which Emby servers to sync this collection to
-              </p>
-              
-              {embyServers.length > 1 && (
-                <div className="flex gap-2 mb-3">
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm text-xs"
-                    onClick={selectAllServers}
-                  >
-                    Select All
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm text-xs"
-                    onClick={deselectAllServers}
-                  >
-                    Deselect All
-                  </button>
-                </div>
-              )}
-              
-              <div className="space-y-2">
-                {embyServers.map((server) => (
-                  <label
-                    key={server.id}
-                    className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors hover:bg-secondary/30"
-                    style={{
-                      background: selectedEmbyServerIds.includes(server.id)
-                        ? 'hsl(var(--primary) / 0.1)'
-                        : 'hsl(var(--secondary) / 0.3)',
-                      border: selectedEmbyServerIds.includes(server.id)
-                        ? '1px solid hsl(var(--primary) / 0.3)'
-                        : '1px solid hsl(var(--border) / 0.3)',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedEmbyServerIds.includes(server.id)}
-                      onChange={() => toggleEmbyServer(server.id)}
-                      className="w-5 h-5 rounded border-border accent-primary cursor-pointer"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm">{server.name}</span>
-                        {server.isDefault && (
-                          <span className="badge badge-info text-xs px-2 py-0.5">Default</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate font-mono mt-0.5">
-                        {server.url}
-                      </p>
-                    </div>
-                    {selectedEmbyServerIds.includes(server.id) && (
-                      <Check size={16} className="text-primary flex-shrink-0" />
-                    )}
-                  </label>
-                ))}
-              </div>
-              
-              {selectedEmbyServerIds.length === 0 && (
-                <p className="text-xs text-yellow-500 mt-2 flex items-center gap-1">
-                  <AlertTriangle size={12} />
-                  No servers selected. Collection will not sync to any Emby server.
-                </p>
-              )}
-            </div>
-          )}
-
-          {embyServers.length === 0 && (
-            <div className="mt-5 p-4 rounded-lg bg-secondary/30 border border-border/30">
-              <p className="text-sm text-muted-foreground">
-                No Emby servers configured. <a href="/settings" className="text-primary hover:underline">Add a server</a> to enable sync.
-              </p>
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-4">
-            <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1" disabled={loading}>
-              {loading ? 'Saving...' : 'Save Settings'}
             </Button>
           </div>
         </form>
