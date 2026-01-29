@@ -177,6 +177,14 @@ export class CollectionService {
       }
 
       this.log.info(`MDBList: Successfully saved ${addedCount}/${enrichedItems.length} items to collection ${collectionId}`);
+      
+      if (addedCount > 0) {
+        await this.prisma.collection.update({
+          where: { id: collectionId },
+          data: { lastItemAddedAt: new Date() },
+        });
+      }
+      
       return addedCount;
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('fetch')) {

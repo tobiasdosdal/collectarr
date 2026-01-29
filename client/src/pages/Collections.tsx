@@ -29,6 +29,7 @@ interface Collection {
   sourceType: string;
   itemCount: number;
   lastSyncAt?: string;
+  lastItemAddedAt?: string;
   posterPath?: string;
   embyServerIds?: string[];
 }
@@ -81,7 +82,7 @@ const Collections: FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sourceTypeFilters, setSourceTypeFilters] = useState<string[]>([]);
   const [syncStatusFilters, setSyncStatusFilters] = useState<string[]>([]);
-  const [sortBy, setSortBy] = useState<'name' | 'size' | 'synced' | 'completion'>('name');
+  const [sortBy, setSortBy] = useState<'name' | 'size' | 'synced' | 'completion' | 'recentlyUpdated'>('recentlyUpdated');
   const [showSourceDropdown, setShowSourceDropdown] = useState<boolean>(false);
   const [showSyncDropdown, setShowSyncDropdown] = useState<boolean>(false);
   const [showSortDropdown, setShowSortDropdown] = useState<boolean>(false);
@@ -131,6 +132,8 @@ const Collections: FC = () => {
           const completionA = statsA?.percentInLibrary || 0;
           const completionB = statsB?.percentInLibrary || 0;
           return completionB - completionA;
+        case 'recentlyUpdated':
+          return new Date(b.lastItemAddedAt || b.lastSyncAt || 0).getTime() - new Date(a.lastItemAddedAt || a.lastSyncAt || 0).getTime();
         default:
           return 0;
       }
@@ -286,12 +289,14 @@ const Collections: FC = () => {
                 {sortBy === 'size' && 'Size'}
                 {sortBy === 'synced' && 'Synced'}
                 {sortBy === 'completion' && 'Completion'}
+                {sortBy === 'recentlyUpdated' && 'Recently Updated'}
               </span>
               <ChevronDown size={14} />
             </button>
             {showSortDropdown && (
               <div className="absolute right-0 top-full mt-1 w-48 py-1 rounded-lg bg-popover border border-border shadow-lg z-50">
                 {[
+                  { value: 'recentlyUpdated' as const, label: 'Recently Updated' },
                   { value: 'name' as const, label: 'Name' },
                   { value: 'size' as const, label: 'Size (largest)' },
                   { value: 'synced' as const, label: 'Last Synced' },
