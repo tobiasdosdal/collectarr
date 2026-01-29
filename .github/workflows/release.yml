@@ -1,15 +1,16 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
         description: 'Image tag (e.g., latest, v1.0.0)'
         required: true
         default: 'latest'
+      reason:
+        description: 'Reason for release'
+        required: false
+        default: 'Manual release'
 
 env:
   REGISTRY: ghcr.io
