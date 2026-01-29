@@ -3,6 +3,9 @@ FROM node:25-alpine AS frontend-builder
 
 WORKDIR /app
 
+# Install build dependencies for canvas
+RUN apk add --no-cache python3 g++ make cairo-dev pango-dev libpng-dev libjpeg-turbo-dev giflib-dev
+
 # Copy package files and strip version to improve caching
 # Version changes won't invalidate dependency cache
 COPY package*.json ./
@@ -26,6 +29,9 @@ WORKDIR /app
 FROM node:25-alpine AS backend-builder
 
 WORKDIR /app
+
+# Install build dependencies for canvas
+RUN apk add --no-cache python3 g++ make cairo-dev pango-dev libpng-dev libjpeg-turbo-dev giflib-dev
 
 # Copy package files and strip version to improve caching
 COPY package*.json ./
@@ -52,8 +58,8 @@ FROM node:25-alpine
 
 WORKDIR /app
 
-# Install openssl for Prisma
-RUN apk add --no-cache openssl
+# Install openssl for Prisma and runtime libs for canvas
+RUN apk add --no-cache openssl cairo pango libpng libjpeg-turbo giflib
 
 # Copy from builders
 COPY --from=backend-builder /app/node_modules ./node_modules
