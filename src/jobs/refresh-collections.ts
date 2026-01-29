@@ -9,7 +9,8 @@ import { syncCollections } from '../modules/emby/sync-service.js';
 import { ensureValidTraktTokens } from '../utils/trakt-auth.js';
 import { withRetry } from '../utils/retry.js';
 import { cacheImage } from '../utils/image-cache.js';
-import { TMDB_API_DELAY_MS, REFRESH_PROGRESS_LOG_INTERVAL, COLLECTION_ITEM_FETCH_DELAY_MS } from '../config/constants.js';
+import { fetchTmdbPoster, fetchTmdbBackdrop } from '../utils/tmdb-api.js';
+import { COLLECTION_ITEM_FETCH_DELAY_MS } from '../config/constants.js';
 import type { FastifyInstance } from 'fastify';
 import type { PrismaClient, Collection, Settings } from '@prisma/client';
 import type { AppConfig } from '../types/index.js';
@@ -24,9 +25,6 @@ interface RefreshResult {
   failed: number;
   skipped: number;
 }
-
-// Rate limiting for TMDB API
-let lastTmdbApiCallTime = 0;
 
 interface CollectionItem {
   mediaType: string;
@@ -60,7 +58,7 @@ export async function refreshCollectionsJob(fastify: FastifyInstance): Promise<R
   for (const collection of collections) {
     if (collection.lastSyncAt) {
       const hoursSinceSync = (now.getTime() - new Date(collection.lastSyncAt).getTime()) / (1000 * 60 * 60);
-      if (hoursSinceSync < collection.refreshIntervalHours) {
+      if (hoursSinceSync < 24) {
         skipped++;
         continue;
       }
@@ -193,12 +191,10 @@ async function refreshCollection(fastify: FastifyInstance, collection: Refreshab
     },
   });
 
-  if (collection.syncToEmbyOnRefresh) {
-    await syncCollections({
-      prisma,
-      collectionId: collection.id,
-    });
-  }
+  await syncCollections({
+    prisma,
+    collectionId: collection.id,
+  });
 
   log.info(`Refreshed ${collection.name}: ${items.length} items`);
 }
@@ -322,41 +318,6 @@ async function fetchItemDetails(item: MDBListItem, apiKey: string): Promise<Coll
   }
 
   return result;
-}
-
-async function waitForTmdbRateLimit(): Promise<void> {
-  const now = Date.now();
-  const timeSinceLastCall = now - lastTmdbApiCallTime;
-  if (timeSinceLastCall < TMDB_API_DELAY_MS) {
-    await new Promise(resolve => setTimeout(resolve, TMDB_API_DELAY_MS - timeSinceLastCall));
-  }
-  lastTmdbApiCallTime = Date.now();
-}
-
-async function fetchTmdbPoster(tmdbId: string, mediaType: string): Promise<string | null> {
-  const tmdbApiKey = process.env.TMDB_API_KEY;
-  if (!tmdbApiKey) {
-    return null;
-  }
-
-  try {
-    await waitForTmdbRateLimit();
-    const type = mediaType === 'SHOW' ? 'tv' : 'movie';
-    const response = await fetch(
-      `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${tmdbApiKey}`
-    );
-
-    if (response.ok) {
-      const data = await response.json() as { poster_path?: string };
-      if (data.poster_path) {
-        return `https://image.tmdb.org/t/p/w500${data.poster_path}`;
-      }
-    }
-  } catch {
-    // Silently fail - TMDB is just a fallback
-  }
-
-  return null;
 }
 
 async function refreshFromTrakt(

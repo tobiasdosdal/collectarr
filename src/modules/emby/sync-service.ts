@@ -19,9 +19,6 @@ interface CollectionWithItems {
   sourceUrl: string | null;
   posterPath: string | null;
   isEnabled: boolean;
-  refreshIntervalHours: number;
-  syncToEmbyOnRefresh: boolean;
-  removeFromEmby: boolean;
   lastSyncAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -172,14 +169,12 @@ export async function syncCollectionToEmby({
           await client.addItemsToCollection(embyCollection.Id, newItemIds);
         }
 
-        if (collection.removeFromEmby) {
-          const itemsToRemove = existingItems
-            .map(item => item.Id)
-            .filter(id => !matchedItemIds.includes(id));
+        const itemsToRemove = existingItems
+          .map(item => item.Id)
+          .filter(id => !matchedItemIds.includes(id));
 
-          if (itemsToRemove.length > 0) {
-            await client.removeItemsFromCollection(embyCollection.Id, itemsToRemove);
-          }
+        if (itemsToRemove.length > 0) {
+          await client.removeItemsFromCollection(embyCollection.Id, itemsToRemove);
         }
       }
 

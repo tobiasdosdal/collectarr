@@ -29,11 +29,10 @@ async function jobsPlugin(fastify: FastifyInstance): Promise<void> {
       return;
     }
 
-    // Check if it's time to refresh based on lastSyncAt and refreshIntervalHours
+    // Check if it's time to refresh based on lastSyncAt (24 hour interval)
     if (collection.lastSyncAt) {
       const hoursSinceSync = (Date.now() - new Date(collection.lastSyncAt).getTime()) / (1000 * 60 * 60);
-      if (hoursSinceSync < collection.refreshIntervalHours * 0.9) {
-        // Allow 10% tolerance for timing
+      if (hoursSinceSync < 22) {
         fastify.log.debug(`Skipping refresh for ${collection.name}, last synced ${hoursSinceSync.toFixed(1)} hours ago`);
         return;
       }
@@ -42,8 +41,7 @@ async function jobsPlugin(fastify: FastifyInstance): Promise<void> {
     await collectionService.refreshCollection(
       collectionId,
       collection.sourceType,
-      collection.sourceId || undefined,
-      collection.syncToEmbyOnRefresh
+      collection.sourceId || undefined
     );
   });
 

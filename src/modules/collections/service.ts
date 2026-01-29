@@ -34,8 +34,7 @@ export class CollectionService {
   async refreshCollection(
     collectionId: string,
     sourceType: string,
-    sourceId: string | undefined,
-    syncToEmbyOnRefresh: boolean
+    sourceId: string | undefined
   ): Promise<number> {
     const settings = await this.prisma.settings.findUnique({
       where: { id: 'singleton' },
@@ -48,8 +47,7 @@ export class CollectionService {
       totalItems = await this.refreshMdblistProgressive(
         collectionId,
         sourceId!,
-        mdblistApiKey,
-        syncToEmbyOnRefresh
+        mdblistApiKey
       );
     } else if (['TRAKT_LIST', 'TRAKT_WATCHLIST', 'TRAKT_COLLECTION'].includes(sourceType)) {
       const collection = await this.prisma.collection.findUnique({
@@ -75,12 +73,10 @@ export class CollectionService {
         data: { lastSyncAt: new Date() },
       });
 
-      if (syncToEmbyOnRefresh) {
-        await syncCollections({
-          prisma: this.prisma,
-          collectionId,
-        });
-      }
+      await syncCollections({
+        prisma: this.prisma,
+        collectionId,
+      });
 
       this.log.info(`Refresh completed for collection ${collectionId}: ${totalItems} items`);
     }
@@ -94,48 +90,32 @@ export class CollectionService {
   private async refreshMdblistProgressive(
     collectionId: string,
     listId: string,
-    apiKey: string | undefined,
-    syncToEmbyOnRefresh: boolean
+    apiKey: string | undefined
   ): Promise<number> {
     if (!apiKey) {
       throw new Error('MDBList API key not configured');
     }
 
     try {
-      const response = await fetch(
-        `${this.config.external.mdblist.baseUrl}/lists/${listId}/items?apikey=${apiKey}`
-      );
-
-      if (!response.ok) {
-        throw new Error(`MDBList API error: ${response.status}`);
+      this.log.info(`MDBList: Starting optimized refresh for collection ${collectionId}`);
+      
+      const enrichedItems = await refreshFromMdblist(listId, apiKey, this.config);
+      
+      if (enrichedItems.length === 0) {
+        this.log.warn(`MDBList: No items found for list ${listId}`);
+        return 0;
       }
 
-      const data = await response.json();
-
-      let items: MDBListItem[];
-      if (Array.isArray(data)) {
-        items = data;
-      } else if (data.items && Array.isArray(data.items)) {
-        items = data.items;
-      } else if (data.movies || data.shows) {
-        // Combine movies and shows if both exist
-        const movies = Array.isArray(data.movies) ? data.movies : [];
-        const shows = Array.isArray(data.shows) ? data.shows : [];
-        items = [...movies, ...shows];
-      } else {
-        throw new Error(`MDBList API returned unexpected format`);
-      }
-
-      this.log.info(`MDBList: Starting progressive fetch of ${items.length} items for collection ${collectionId}`);
+      this.log.info(`MDBList: Fetched ${enrichedItems.length} items, saving to database...`);
 
       let addedCount = 0;
       const seenTmdbIds = new Set<string>();
 
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (!item) continue;
+      for (let i = 0; i < enrichedItems.length; i++) {
+        const enrichedItem = enrichedItems[i];
+        if (!enrichedItem) continue;
 
-        // Check if collection still exists (might have been deleted)
+        // Check if collection still exists every 50 items
         if (i % 50 === 0) {
           const collectionExists = await this.prisma.collection.findUnique({
             where: { id: collectionId },
@@ -148,8 +128,6 @@ export class CollectionService {
         }
 
         try {
-          const enrichedItem = await fetchMdblistItemDetails(item, apiKey, this.config);
-
           // Skip duplicates
           if (enrichedItem.tmdbId && seenTmdbIds.has(enrichedItem.tmdbId)) {
             continue;
@@ -186,11 +164,7 @@ export class CollectionService {
           addedCount++;
 
           if (addedCount % 10 === 0) {
-            this.log.debug(`MDBList: Added ${addedCount}/${items.length} items to collection ${collectionId}`);
-          }
-
-          if (i < items.length - 1) {
-            await new Promise(r => setTimeout(r, 50));
+            this.log.debug(`MDBList: Saved ${addedCount}/${enrichedItems.length} items to collection ${collectionId}`);
           }
         } catch (itemError) {
           const errorMsg = (itemError as Error).message;
@@ -198,11 +172,11 @@ export class CollectionService {
             this.log.info(`Collection ${collectionId} was deleted, stopping refresh`);
             return addedCount;
           }
-          this.log.warn(`Failed to add item ${i + 1} to collection ${collectionId}: ${errorMsg}`);
+          this.log.warn(`Failed to save item ${i + 1} to collection ${collectionId}: ${errorMsg}`);
         }
       }
 
-      this.log.info(`MDBList: Successfully added ${addedCount}/${items.length} items to collection ${collectionId}`);
+      this.log.info(`MDBList: Successfully saved ${addedCount}/${enrichedItems.length} items to collection ${collectionId}`);
       return addedCount;
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('fetch')) {

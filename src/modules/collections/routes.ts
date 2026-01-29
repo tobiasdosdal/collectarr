@@ -16,24 +16,12 @@ const createCollectionSchema = z.object({
   sourceType: z.enum(['MDBLIST', 'TRAKT_LIST', 'TRAKT_WATCHLIST', 'TRAKT_COLLECTION', 'MANUAL']),
   sourceId: z.string().optional(),
   sourceUrl: z.string().optional(),
-  refreshIntervalHours: z.number().min(1).max(8760).default(24).transform((value) => Math.floor(value)),
-  refreshTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Invalid time format. Use HH:MM (24-hour)').optional(),
-  syncToEmbyOnRefresh: z.boolean().default(true),
-  removeFromEmby: z.boolean().default(true),
-  deleteFromEmbyOnDelete: z.boolean().default(false),
-  embyServerIds: z.array(z.string()).optional(),
 });
 
 const updateCollectionSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   isEnabled: z.boolean().optional(),
-  refreshIntervalHours: z.number().min(1).max(8760).optional(),
-  refreshTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Invalid time format. Use HH:MM (24-hour)').optional().nullable(),
-  syncToEmbyOnRefresh: z.boolean().optional(),
-  removeFromEmby: z.boolean().optional(),
-  deleteFromEmbyOnDelete: z.boolean().optional(),
-  embyServerIds: z.array(z.string()).optional(),
 });
 
 interface CollectionParams {
@@ -97,7 +85,7 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       });
     }
 
-    const { name, description, sourceType, sourceId, sourceUrl, refreshIntervalHours, refreshTime, syncToEmbyOnRefresh, removeFromEmby, embyServerIds } = validation.data;
+    const { name, description, sourceType, sourceId, sourceUrl } = validation.data;
 
     if (['MDBLIST', 'TRAKT_LIST'].includes(sourceType) && !sourceId) {
       return reply.code(400).send({
@@ -119,12 +107,7 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     }
 
     const collection = await fastify.prisma.collection.create({
-      data: {
-        name, description, sourceType, sourceId, sourceUrl, refreshIntervalHours, refreshTime, syncToEmbyOnRefresh, removeFromEmby,
-        ...(embyServerIds?.length ? {
-          embyServers: { create: embyServerIds.map((embyServerId) => ({ embyServerId })) },
-        } : {}),
-      },
+      data: { name, description, sourceType, sourceId, sourceUrl },
       include: { embyServers: true },
     });
 
@@ -136,7 +119,7 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     // Trigger background refresh for non-manual collections
     if (sourceType !== 'MANUAL') {
       setImmediate(() => {
-        collectionService.refreshCollection(collection.id, sourceType, sourceId, syncToEmbyOnRefresh)
+        collectionService.refreshCollection(collection.id, sourceType, sourceId)
           .catch(err => fastify.log.warn(`Background refresh failed for collection ${collection.id}: ${(err as Error).message}`));
       });
     }
@@ -198,29 +181,14 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       return reply.code(404).send({ error: 'Not Found', message: 'Collection not found' });
     }
 
-    // Build update data, handling null refreshTime to clear it
-    const updateData: Record<string, unknown> = { ...validation.data };
-    if (validation.data.embyServerIds) {
-      updateData.embyServers = {
-        deleteMany: {},
-        create: validation.data.embyServerIds.map((embyServerId: string) => ({ embyServerId })),
-      };
-      delete updateData.embyServerIds;
-    }
-
     const collection = await fastify.prisma.collection.update({
       where: { id: request.params.id },
-      data: updateData,
+      data: validation.data,
       include: { embyServers: true },
     });
 
-    // Update the schedule if scheduling-related fields changed
-    const scheduleFieldsChanged =
-      validation.data.refreshIntervalHours !== undefined ||
-      validation.data.refreshTime !== undefined ||
-      validation.data.isEnabled !== undefined;
-
-    if (scheduleFieldsChanged && fastify.collectionScheduler) {
+    // Update the schedule if isEnabled changed
+    if (validation.data.isEnabled !== undefined && fastify.collectionScheduler) {
       await fastify.collectionScheduler.scheduleCollection(collection);
     }
 
@@ -242,8 +210,8 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       fastify.collectionScheduler.unscheduleCollection(request.params.id);
     }
 
-    // Delete from Emby if setting is enabled
-    if (existing.deleteFromEmbyOnDelete && existing.embyServers.length > 0) {
+    // Always delete from Emby when collection is deleted
+    if (existing.embyServers.length > 0) {
       for (const { embyServer } of existing.embyServers) {
         try {
           await removeCollectionFromEmby({
@@ -278,7 +246,7 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
 
     // Start background refresh
     setImmediate(() => {
-      collectionService.refreshCollection(request.params.id, collection.sourceType, collection.sourceId || undefined, collection.syncToEmbyOnRefresh)
+      collectionService.refreshCollection(request.params.id, collection.sourceType, collection.sourceId || undefined)
         .catch(err => fastify.log.error(`Refresh failed for collection ${request.params.id}: ${(err as Error).message}`));
     });
 

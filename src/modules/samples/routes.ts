@@ -80,7 +80,6 @@ export default async function samplesRoutes(fastify: FastifyInstance): Promise<v
       });
     }
 
-    // Create the collection
     const collection = await fastify.prisma.collection.create({
       data: {
         name: sample.name,
@@ -88,9 +87,6 @@ export default async function samplesRoutes(fastify: FastifyInstance): Promise<v
         sourceType: 'SAMPLE',
         sourceId: sample.id,
         posterPath: sample.posterPath,
-        refreshIntervalHours: 24,
-        syncToEmbyOnRefresh: true,
-        removeFromEmby: true,
       },
     });
 

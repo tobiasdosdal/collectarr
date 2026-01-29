@@ -32,36 +32,8 @@ class CollectionSchedulerImpl {
     this.refreshHandler = handler;
   }
 
-  /**
-   * Convert collection settings to a cron expression
-   * Uses refreshIntervalHours and refreshTime to create the schedule
-   */
-  private getCronExpression(collection: Collection): string {
-    const { refreshIntervalHours, refreshTime } = collection;
-
-    // Parse preferred time (HH:MM format) or default to midnight
-    const [hours, minutes] = (refreshTime || '00:00').split(':').map(Number);
-    const hour = hours || 0;
-    const minute = minutes || 0;
-
-    // Convert interval hours to cron expression
-    if (refreshIntervalHours <= 1) {
-      // Every hour at the specified minute
-      return `${minute} * * * *`;
-    } else if (refreshIntervalHours < 24) {
-      // Every N hours at the specified minute
-      return `${minute} */${refreshIntervalHours} * * *`;
-    } else if (refreshIntervalHours === 24) {
-      // Daily at the specified time
-      return `${minute} ${hour} * * *`;
-    } else if (refreshIntervalHours <= 168) {
-      // Weekly (or less frequent within a week)
-      const daysInterval = Math.round(refreshIntervalHours / 24);
-      return `${minute} ${hour} */${daysInterval} * *`;
-    } else {
-      // Monthly or longer - run on day 1 at specified time
-      return `${minute} ${hour} 1 * *`;
-    }
+  private getCronExpression(): string {
+    return '0 2 * * *';
   }
 
   /**
@@ -117,7 +89,7 @@ class CollectionSchedulerImpl {
       return;
     }
 
-    const cronExpression = this.getCronExpression(collection);
+    const cronExpression = this.getCronExpression();
     const existing = this.schedules.get(collection.id);
 
     // If schedule hasn't changed, don't reschedule
