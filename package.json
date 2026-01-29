@@ -1,6 +1,6 @@
 {
   "name": "collectarr",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Automated Collections Database for Emby",
   "type": "module",
   "main": "dist-server/server.js",
