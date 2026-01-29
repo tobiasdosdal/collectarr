@@ -185,35 +185,26 @@ export class CollectionService {
           data: { lastItemAddedAt: new Date() },
         });
         
-        const itemPosters = enrichedItems
-          .slice(0, 4)
-          .map(item => item.posterPath)
-          .filter(Boolean) as string[];
+        const collection = await this.prisma.collection.findUnique({
+          where: { id: collectionId },
+          select: { name: true },
+        });
         
-        if (itemPosters.length > 0) {
-          const collection = await this.prisma.collection.findUnique({
-            where: { id: collectionId },
-            select: { name: true },
+        if (collection) {
+          generateCollectionPoster({
+            collectionId,
+            collectionName: collection.name,
+          }).then(async (posterUrl) => {
+            if (posterUrl) {
+              await this.prisma.collection.update({
+                where: { id: collectionId },
+                data: { posterPath: posterUrl },
+              });
+              this.log.info(`Generated poster for collection ${collectionId}`);
+            }
+          }).catch(err => {
+            this.log.warn(`Failed to generate poster for collection ${collectionId}: ${err.message}`);
           });
-          
-          if (collection) {
-            generateCollectionPoster({
-              collectionId,
-              collectionName: collection.name,
-              itemCount: addedCount,
-              itemPosterPaths: itemPosters,
-            }).then(async (posterUrl) => {
-              if (posterUrl) {
-                await this.prisma.collection.update({
-                  where: { id: collectionId },
-                  data: { posterPath: posterUrl },
-                });
-                this.log.info(`Generated collage poster for collection ${collectionId}`);
-              }
-            }).catch(err => {
-              this.log.warn(`Failed to generate poster for collection ${collectionId}: ${err.message}`);
-            });
-          }
         }
       }
       
