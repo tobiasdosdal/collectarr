@@ -46,14 +46,9 @@ model Collection {
   sourceUrl    String?
   posterPath   String?
   isEnabled    Boolean   @default(true)
-  refreshIntervalHours Int       @default(24)
-  refreshTime          String?   // Preferred refresh time in HH:MM format (24-hour)
-  syncToEmbyOnRefresh    Boolean   @default(true)
-  removeFromEmby         Boolean   @default(true)
-  deleteFromEmbyOnDelete Boolean   @default(false)
-  lastSyncAt             DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  lastSyncAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   items        CollectionItem[]
   syncLogs     SyncLog[]
