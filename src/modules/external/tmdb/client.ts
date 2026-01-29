@@ -4,12 +4,9 @@
  */
 
 import type { AppConfig } from '../../../types/index.js';
-
-interface HttpError extends Error {
-  status?: number;
-  code?: string;
-  originalError?: Error;
-}
+import { withRetry } from '../../../utils/retry.js';
+import { handleNetworkError } from '../../../utils/error-handling.js';
+import type { HttpError } from '../../../shared/http/http-error.js';
 
 export interface TMDbMovie {
   id: number;
@@ -83,14 +80,18 @@ class TMDbClient {
 
       return response.json() as Promise<T>;
     } catch (error) {
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        const networkError = new Error(`Network error: Failed to connect to TMDb API at ${this.baseUrl}`) as HttpError;
-        networkError.code = (error as NodeJS.ErrnoException).code || 'NETWORK_ERROR';
-        networkError.originalError = error;
-        throw networkError;
-      }
-      throw error;
+      handleNetworkError(error, 'TMDb', this.baseUrl);
     }
+  }
+
+  async requestWithRetry<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    return withRetry(
+      () => this.request<T>(endpoint, options),
+      {
+        maxRetries: 3,
+        retryableStatusCodes: [408, 429, 500, 502, 503, 504],
+      }
+    );
   }
 
   async findByExternalId(externalId: string, externalSource: string): Promise<TMDbFindResult> {

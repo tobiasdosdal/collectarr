@@ -1,4 +1,6 @@
 import { TMDB_API_DELAY_MS } from '../config/constants.js';
+import { withRetry } from './retry.js';
+import { handleNetworkError } from './error-handling.js';
 
 let lastTmdbApiCallTime = 0;
 
@@ -11,6 +13,11 @@ export async function waitForTmdbRateLimit(): Promise<void> {
   lastTmdbApiCallTime = Date.now();
 }
 
+interface TmdbMovieResponse {
+  poster_path?: string;
+  backdrop_path?: string;
+}
+
 export async function fetchTmdbPoster(tmdbId: string, mediaType: string): Promise<string | null> {
   const tmdbApiKey = process.env.TMDB_API_KEY;
   if (!tmdbApiKey) {
@@ -20,15 +27,59 @@ export async function fetchTmdbPoster(tmdbId: string, mediaType: string): Promis
   try {
     await waitForTmdbRateLimit();
     const type = mediaType === 'SHOW' ? 'tv' : 'movie';
-    const response = await fetch(
-      `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${tmdbApiKey}`
+    
+    const data = await withRetry(
+      async () => {
+        const response = await fetch(
+          `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${tmdbApiKey}`
+        );
+        
+        if (!response.ok) {
+          throw new Error(`TMDB API error: ${response.status} ${response.statusText}`);
+        }
+        
+        return response.json() as Promise<TmdbMovieResponse>;
+      },
+      { maxRetries: 2, retryableStatusCodes: [429, 500, 502, 503, 504] }
     );
+    
+    if (data.poster_path) {
+      return `https://image.tmdb.org/t/p/w500${data.poster_path}`;
+    }
+  } catch (error) {
+    console.warn(`TMDB API error for ${tmdbId}:`, (error as Error).message);
+  }
 
-    if (response.ok) {
-      const data = (await response.json()) as { poster_path?: string };
-      if (data.poster_path) {
-        return `https://image.tmdb.org/t/p/w500${data.poster_path}`;
-      }
+  return null;
+}
+
+export async function fetchTmdbBackdrop(tmdbId: string, mediaType: string): Promise<string | null> {
+  const tmdbApiKey = process.env.TMDB_API_KEY;
+  if (!tmdbApiKey) {
+    return null;
+  }
+
+  try {
+    await waitForTmdbRateLimit();
+    const type = mediaType === 'SHOW' ? 'tv' : 'movie';
+    
+    const data = await withRetry(
+      async () => {
+        const response = await fetch(
+          `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${tmdbApiKey}`
+        );
+        
+        if (!response.ok) {
+          throw new Error(`TMDB API error: ${response.status} ${response.statusText}`);
+        }
+        
+        return response.json() as Promise<TmdbMovieResponse>;
+      },
+      { maxRetries: 2, retryableStatusCodes: [429, 500, 502, 503, 504] }
+    );
+    
+    if (data.backdrop_path) {
+      return `https://image.tmdb.org/t/p/w1280${data.backdrop_path}`;
     }
   } catch (error) {
     console.warn(`TMDB API error for ${tmdbId}:`, (error as Error).message);

@@ -12,6 +12,7 @@ const createUserSchema = z.object({
 const updateUserSchema = z.object({
   email: z.string().email('Invalid email address').optional(),
   password: z.string().min(8, 'Password must be at least 8 characters').optional(),
+  currentPassword: z.string().optional(),
   isAdmin: z.boolean().optional(),
 });
 
@@ -105,7 +106,7 @@ export default async function usersRoutes(fastify: FastifyInstance) {
       });
     }
 
-    const { email, password, isAdmin: newIsAdmin } = validation.data;
+    const { email, password, currentPassword, isAdmin: newIsAdmin } = validation.data;
 
     const targetUser = await fastify.prisma.user.findUnique({
       where: { id },
@@ -124,6 +125,24 @@ export default async function usersRoutes(fastify: FastifyInstance) {
         error: 'Forbidden',
         message: 'You can only change your password',
       });
+    }
+
+    // When user changes their OWN password, require current password verification
+    if (isSelf && password) {
+      if (!currentPassword) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'Current password is required to change your password',
+        });
+      }
+
+      const isValidPassword = await bcrypt.compare(currentPassword, targetUser.passwordHash);
+      if (!isValidPassword) {
+        return reply.code(401).send({
+          error: 'Unauthorized',
+          message: 'Current password is incorrect',
+        });
+      }
     }
 
     // Prevent removing last admin

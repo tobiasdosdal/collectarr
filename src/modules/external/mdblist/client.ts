@@ -1,13 +1,6 @@
-/**
- * MDBList API Client
- * Docs: https://mdblist.com/api-docs
- */
-
-interface HttpError extends Error {
-  status?: number;
-  code?: string;
-  originalError?: Error;
-}
+import { withRetry } from '../../../utils/retry.js';
+import { handleNetworkError } from '../../../utils/error-handling.js';
+import type { HttpError } from '../../../shared/http/http-error.js';
 
 export interface MDBListItem {
   mediaType: 'MOVIE' | 'SHOW';
@@ -75,14 +68,18 @@ class MDBListClient {
 
       return response.json() as Promise<T>;
     } catch (error) {
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        const networkError = new Error(`Network error: Failed to connect to MDBList API at ${this.baseUrl}`) as HttpError;
-        networkError.code = (error as NodeJS.ErrnoException).code || 'NETWORK_ERROR';
-        networkError.originalError = error;
-        throw networkError;
-      }
-      throw error;
+      handleNetworkError(error, 'MDBList', this.baseUrl);
     }
+  }
+
+  async requestWithRetry<T>(endpoint: string): Promise<T> {
+    return withRetry(
+      () => this.request<T>(endpoint),
+      {
+        maxRetries: 3,
+        retryableStatusCodes: [408, 429, 500, 502, 503, 504],
+      }
+    );
   }
 
   async searchLists(query: string): Promise<MDBListInfo[]> {
