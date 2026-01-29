@@ -3,7 +3,7 @@
  * Serves cached images with ETag support and conditional requests
  */
 
-import { getCachedImageWithStats, cacheImage, validateFilename, getMetadata, getCacheStats, getCachedImageUrl } from '../../utils/image-cache.js';
+import { getCachedImageWithStats, cacheImage, validateFilename, getMetadata, getCacheStats, getCachedImageUrl, type ImageMetadata } from '../../utils/image-cache.js';
 import fs from 'fs/promises';
 import path from 'path';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
@@ -92,12 +92,12 @@ export default async function imageRoutes(fastify: FastifyInstance): Promise<voi
     }
 
     let imageData = await getCachedImageWithStats(filename);
+    let metadata: ImageMetadata | null = null;
 
     if (!imageData) {
-      const metadata = await getMetadata(filename);
+      metadata = await getMetadata(filename);
 
       if (metadata?.url && metadata.url.startsWith('https://image.tmdb.org/')) {
-        // Try to cache the image on-demand
         try {
           const cachedFilename = await cacheImage(metadata.url);
           if (cachedFilename === filename) {
@@ -110,6 +110,15 @@ export default async function imageRoutes(fastify: FastifyInstance): Promise<voi
     }
 
     if (!imageData) {
+      if (metadata?.url && metadata.url.startsWith('https://image.tmdb.org/')) {
+        fastify.log.debug({ filename, url: metadata.url }, 'Image not cached, redirecting to original URL');
+        return reply
+          .code(307)
+          .header('Location', metadata.url)
+          .header('Cache-Control', 'public, max-age=60')
+          .send();
+      }
+      
       fastify.log.warn({ filename }, 'Image not found and could not be cached');
       return reply.code(404).send({ error: 'Image not found or not yet cached' });
     }
