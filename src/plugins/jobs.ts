@@ -6,6 +6,7 @@
 import fp from 'fastify-plugin';
 import { getScheduler } from '../jobs/scheduler.js';
 import { getCollectionScheduler, resetCollectionScheduler } from '../jobs/collection-scheduler.js';
+import { initializeJobQueue } from '../jobs/refresh-collections.js';
 import refreshCollectionsJob from '../jobs/refresh-collections.js';
 import { syncAllToEmby } from '../jobs/sync-to-emby.js';
 import cacheCleanupJob from '../jobs/cache-cleanup.js';
@@ -90,6 +91,10 @@ async function jobsPlugin(fastify: FastifyInstance): Promise<void> {
   fastify.decorate('collectionScheduler', collectionScheduler);
 
   fastify.addHook('onReady', async () => {
+    // Initialize job queue for background enrichment
+    initializeJobQueue(fastify);
+    fastify.log.info('Job queue initialized');
+
     scheduler.start();
     fastify.log.info('Job scheduler started');
 
