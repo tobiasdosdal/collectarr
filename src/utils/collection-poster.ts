@@ -1,13 +1,20 @@
 import { createCanvas } from 'canvas';
 import path from 'path';
 import fs from 'fs/promises';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const POSTER_WIDTH = 500;
 const POSTER_HEIGHT = 750;
-const UPLOADS_DIR = './uploads/posters';
+const POSTERS_DIR = path.resolve(process.cwd(), 'uploads/posters');
 const FONT_SIZE = 52;
 const MAX_CHARS_PER_LINE = 16;
 const LINE_HEIGHT = 70;
+
+// Font stack with fallbacks for Alpine Linux Docker environment
+const FONT_FAMILY = "'Liberation Sans', 'DejaVu Sans', 'Bitstream Vera Sans', Arial, sans-serif";
 
 interface CollectionPosterOptions {
   collectionId: string;
@@ -38,7 +45,7 @@ export async function generateCollectionPoster(
   const { collectionId, collectionName } = options;
 
   try {
-    await fs.mkdir(UPLOADS_DIR, { recursive: true });
+    await fs.mkdir(POSTERS_DIR, { recursive: true });
 
     const canvas = createCanvas(POSTER_WIDTH, POSTER_HEIGHT);
     const ctx = canvas.getContext('2d');
@@ -57,34 +64,40 @@ export async function generateCollectionPoster(
     }
 
     const totalTextHeight = lines.length * LINE_HEIGHT;
-    const startY = (POSTER_HEIGHT - totalTextHeight) / 2 + (LINE_HEIGHT / 2);
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    const padding = 40;
-    const boxHeight = totalTextHeight + padding * 2;
-    const boxY = startY - (LINE_HEIGHT / 2) - padding;
-    ctx.fillRect(30, boxY, POSTER_WIDTH - 60, boxHeight);
+    const startY = (POSTER_HEIGHT - totalTextHeight) / 2;
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${FONT_SIZE}px Arial, "Helvetica Neue", Helvetica, sans-serif`;
+    ctx.font = `bold ${FONT_SIZE}px ${FONT_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     lines.forEach((line, index) => {
-      const y = startY + (index * LINE_HEIGHT);
+      const y = startY + (index * LINE_HEIGHT) + (LINE_HEIGHT / 2);
       ctx.fillText(line, POSTER_WIDTH / 2, y);
     });
 
     const filename = `poster-${collectionId}.png`;
-    const filepath = path.join(UPLOADS_DIR, filename);
+    const filepath = path.join(POSTERS_DIR, filename);
     const buffer = canvas.toBuffer('image/png');
-    await fs.writeFile(filepath, buffer);
+
+    // Atomic file write: write to temp file first, then rename
+    const tempPath = `${filepath}.tmp`;
+    await fs.writeFile(tempPath, buffer);
+    await fs.rename(tempPath, filepath);
 
     return `/api/v1/images/collage/${filename}`;
   } catch (error) {
     console.error('Failed to generate collection poster:', error);
     return null;
   }
+}
+
+export function getGeneratedPosterPath(collectionId: string): string {
+  return path.join(POSTERS_DIR, `poster-${collectionId}.png`);
+}
+
+export function getUploadedPosterPath(collectionId: string, ext: string): string {
+  return path.join(POSTERS_DIR, `${collectionId}.${ext}`);
 }
 
 interface PrismaCollection {

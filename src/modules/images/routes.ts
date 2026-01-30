@@ -233,16 +233,18 @@ export default async function imageRoutes(fastify: FastifyInstance): Promise<voi
     }
   });
 
+const POSTERS_DIR = path.resolve(process.cwd(), 'uploads/posters');
+
   // Serve generated collection collage posters
   fastify.get<{ Params: { filename: string } }>('/collage/:filename', async (request, reply) => {
     const { filename } = request.params;
-    
-    // Validate filename to prevent directory traversal
-    if (!filename.match(/^[a-zA-Z0-9_-]+\.png$/)) {
+
+    // Validate filename to prevent directory traversal - accept poster-{uuid}.png format
+    if (!filename.match(/^poster-[a-f0-9-]+\.png$/i)) {
       return reply.code(400).send({ error: 'Invalid filename' });
     }
-    
-    const filepath = `./uploads/posters/${filename}`;
+
+    const filepath = path.join(POSTERS_DIR, filename);
     
     try {
       const fs = await import('fs/promises');

@@ -58,8 +58,8 @@ FROM node:25-alpine
 
 WORKDIR /app
 
-# Install openssl for Prisma and runtime libs for canvas
-RUN apk add --no-cache openssl cairo pango libpng libjpeg-turbo giflib
+# Install openssl for Prisma, runtime libs for canvas, and fonts for poster generation
+RUN apk add --no-cache openssl cairo pango libpng libjpeg-turbo giflib font-liberation font-dejavu
 
 # Copy from builders
 COPY --from=backend-builder /app/node_modules ./node_modules
