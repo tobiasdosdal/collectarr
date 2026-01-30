@@ -5,7 +5,7 @@ import type { HttpError } from '../../../shared/http/http-error.js';
 export interface MDBListItem {
   mediaType: 'MOVIE' | 'SHOW';
   title: string;
-  year: number;
+  year: number | null;
   imdbId: string | undefined;
   tmdbId: string | undefined;
   traktId: string | undefined;
@@ -108,7 +108,7 @@ class MDBListClient {
     return data.map((item) => ({
       mediaType: item.mediatype === 'movie' ? 'MOVIE' : 'SHOW',
       title: item.title,
-      year: item.year,
+      year: typeof item.year === 'number' ? item.year : parseInt(item.year, 10) || null,
       imdbId: item.imdb_id,
       tmdbId: item.tmdb_id?.toString(),
       traktId: item.trakt_id?.toString(),

@@ -25,7 +25,7 @@ export interface TraktList {
 export interface TraktListItem {
   mediaType: 'MOVIE' | 'SHOW';
   title: string;
-  year: number;
+  year: number | null;
   imdbId: string | undefined;
   tmdbId: string | undefined;
   traktId: string | undefined;
@@ -36,7 +36,7 @@ export interface TraktListItem {
 
 export interface TraktMedia {
   title: string;
-  year: number;
+  year: number | null;
   imdbId: string | undefined;
   tmdbId: string | undefined;
   traktId: string | undefined;
@@ -230,10 +230,11 @@ class TraktClient {
 
   private normalizeItem(item: TraktApiItem): TraktListItem {
     const media = item.movie || item.show;
+    const year = media?.year;
     return {
       mediaType: item.movie ? 'MOVIE' : 'SHOW',
       title: media!.title,
-      year: media!.year,
+      year: typeof year === 'number' ? year : (year ? parseInt(year, 10) : null),
       imdbId: media?.ids?.imdb,
       tmdbId: media?.ids?.tmdb?.toString(),
       traktId: media?.ids?.trakt?.toString(),
@@ -244,9 +245,10 @@ class TraktClient {
   }
 
   private normalizeMedia(media: NonNullable<TraktApiItem['movie']>): TraktMedia {
+    const year = media.year;
     return {
       title: media.title,
-      year: media.year,
+      year: typeof year === 'number' ? year : (year ? parseInt(year, 10) : null),
       imdbId: media.ids?.imdb,
       tmdbId: media.ids?.tmdb?.toString(),
       traktId: media.ids?.trakt?.toString(),
