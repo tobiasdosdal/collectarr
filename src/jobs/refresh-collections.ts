@@ -11,6 +11,10 @@ import { withRetry } from '../utils/retry.js';
 import { cacheImage } from '../utils/image-cache.js';
 import { fetchTmdbPoster, fetchTmdbBackdrop } from '../utils/tmdb-api.js';
 import { COLLECTION_ITEM_FETCH_DELAY_MS } from '../config/constants.js';
+import { JobQueue } from './job-queue.js';
+import { JobPriority } from './job-types.js';
+import { ItemEnrichmentJob } from './item-enrichment-job.js';
+import type { EnrichItemJobData } from './item-enrichment-job.js';
 import type { FastifyInstance } from 'fastify';
 import type { PrismaClient, Collection, Settings } from '@prisma/client';
 import type { AppConfig } from '../types/index.js';
@@ -30,14 +34,45 @@ interface CollectionItem {
   mediaType: string;
   title: string;
   year: number | null;
-  imdbId?: string | null;
-  tmdbId?: string | null;
-  traktId?: string | null;
-  tvdbId?: string | null;
-  posterPath?: string | null;
-  backdropPath?: string | null;
-  rating?: number | null;
-  ratingCount?: number | null;
+  imdbId?: string;
+  tmdbId?: string;
+  traktId?: string;
+  tvdbId?: string;
+  posterPath?: string;
+  backdropPath?: string;
+  rating?: number;
+  ratingCount?: number;
+}
+
+// Global job queue instance
+let jobQueueInstance: JobQueue | null = null;
+
+/**
+ * Initialize the job queue on server start
+ */
+export function initializeJobQueue(fastify: FastifyInstance): JobQueue {
+  if (jobQueueInstance) {
+    return jobQueueInstance;
+  }
+
+  const queue = new JobQueue({ concurrency: 3, maxAttempts: 5 });
+  ItemEnrichmentJob.registerWithQueue(queue, fastify.prisma, fastify.config);
+  
+  // Start processing jobs in the background
+  queue.process().catch((error) => {
+    fastify.log.error('Job queue processing error:', error);
+  });
+
+  jobQueueInstance = queue;
+  fastify.log.info('Job queue initialized');
+  return queue;
+}
+
+/**
+ * Get the global job queue instance
+ */
+export function getJobQueue(): JobQueue | null {
+  return jobQueueInstance;
 }
 
 export async function refreshCollectionsJob(fastify: FastifyInstance): Promise<RefreshResult> {
@@ -139,6 +174,7 @@ async function refreshCollection(fastify: FastifyInstance, collection: Refreshab
   const existingByTmdb = new Map(existingItems.filter(item => item.tmdbId).map(item => [item.tmdbId!, item]));
   const existingByTvdb = new Map(existingItems.filter(item => item.tvdbId).map(item => [item.tvdbId!, item]));
 
+  // Save items immediately with basic data and enrichmentStatus = 'PENDING'
   await prisma.$transaction([
     prisma.collectionItem.deleteMany({
       where: { collectionId: collection.id },
@@ -155,16 +191,18 @@ async function refreshCollection(fastify: FastifyInstance, collection: Refreshab
           mediaType: item.mediaType,
           title: item.title,
           year: item.year,
-          imdbId: item.imdbId,
-          tmdbId: item.tmdbId,
-          traktId: item.traktId,
-          tvdbId: item.tvdbId,
-          posterPath: item.posterPath,
-          backdropPath: item.backdropPath,
-          rating: item.rating,
-          ratingCount: item.ratingCount,
+          imdbId: item.imdbId ?? undefined,
+          tmdbId: item.tmdbId ?? undefined,
+          traktId: item.traktId ?? undefined,
+          tvdbId: item.tvdbId ?? undefined,
+          posterPath: item.posterPath ?? undefined,
+          backdropPath: item.backdropPath ?? undefined,
+          rating: item.rating ?? undefined,
+          ratingCount: item.ratingCount ?? undefined,
           inEmby: existing?.inEmby ?? false,
           embyItemId: existing?.embyItemId ?? null,
+          enrichmentStatus: 'PENDING',
+          enrichmentAttempts: 0,
         };
       }),
     }),
@@ -191,12 +229,46 @@ async function refreshCollection(fastify: FastifyInstance, collection: Refreshab
     },
   });
 
+  // Get the newly created items to queue enrichment jobs
+  const newItems = await prisma.collectionItem.findMany({
+    where: { collectionId: collection.id },
+    select: {
+      id: true,
+      imdbId: true,
+      tmdbId: true,
+      mediaType: true,
+    },
+  });
+
+  // Queue enrichment jobs for each item
+  const queue = getJobQueue();
+  if (queue) {
+    for (const item of newItems) {
+      const jobData: EnrichItemJobData = {
+        itemId: item.id,
+        collectionId: collection.id,
+        imdbId: item.imdbId ?? undefined,
+        tmdbId: item.tmdbId ?? undefined,
+        mediaType: item.mediaType,
+      };
+
+      queue.enqueue({
+        type: 'enrich-item',
+        priority: JobPriority.NORMAL,
+        data: jobData,
+        maxAttempts: 5,
+        delayMs: 0,
+      });
+    }
+    log.info(`Queued ${newItems.length} enrichment jobs for collection ${collection.name}`);
+  }
+
   await syncCollections({
     prisma,
     collectionId: collection.id,
   });
 
-  log.info(`Refreshed ${collection.name}: ${items.length} items`);
+  log.info(`Refreshed ${collection.name}: ${items.length} items (enrichment queued)`);
 }
 
 async function refreshFromMdblist(
@@ -220,33 +292,17 @@ async function refreshFromMdblist(
     { maxRetries: 3 }
   );
 
-  const enrichedItems: CollectionItem[] = [];
-
-  // Fetch items one-by-one instead of in batches
-  for (let i = 0; i < basicItems.length; i++) {
-    const item = basicItems[i];
-    if (!item) continue;
-
-    try {
-      const enrichedItem = await fetchItemDetails(item, apiKey);
-      enrichedItems.push(enrichedItem);
-
-      // Log progress every 50 items
-      if (enrichedItems.length % 50 === 0) {
-        console.log(`MDBList: Enriched ${enrichedItems.length}/${basicItems.length} items for collection ${collection.id}`);
-      }
-
-      // Small delay between items to avoid overwhelming the API
-      if (i < basicItems.length - 1) {
-        await new Promise(r => setTimeout(r, 50));
-      }
-    } catch (err) {
-      console.warn(`Failed to enrich item ${i}:`, (err as Error).message);
-      // Continue with next item instead of failing
-    }
-  }
-
-  return enrichedItems;
+  // Return basic items without enrichment - enrichment happens in background
+  return basicItems.map((item) => ({
+    mediaType: item.mediaType,
+    title: item.title,
+    year: item.year,
+    imdbId: item.imdbId ?? undefined,
+    tmdbId: item.tmdbId ?? undefined,
+    traktId: item.traktId ?? undefined,
+    tvdbId: item.tvdbId ?? undefined,
+    posterPath: item.posterPath ?? undefined,
+  }));
 }
 
 async function fetchItemDetails(item: MDBListItem, apiKey: string): Promise<CollectionItem> {
@@ -254,11 +310,11 @@ async function fetchItemDetails(item: MDBListItem, apiKey: string): Promise<Coll
     mediaType: item.mediaType,
     title: item.title,
     year: item.year,
-    imdbId: item.imdbId,
-    tmdbId: item.tmdbId,
-    traktId: item.traktId,
-    tvdbId: item.tvdbId,
-    posterPath: item.posterPath,
+    imdbId: item.imdbId ?? undefined,
+    tmdbId: item.tmdbId ?? undefined,
+    traktId: item.traktId ?? undefined,
+    tvdbId: item.tvdbId ?? undefined,
+    posterPath: item.posterPath ?? undefined,
   };
 
   if (!item.imdbId) {
@@ -286,8 +342,8 @@ async function fetchItemDetails(item: MDBListItem, apiKey: string): Promise<Coll
         backdrop?: string;
       };
 
-      result.rating = detail.score || detail.imdbrating || null;
-      result.ratingCount = detail.imdbvotes || null;
+      result.rating = detail.score || detail.imdbrating;
+      result.ratingCount = detail.imdbvotes;
 
       if (detail.poster) {
         const posterUrl = detail.poster.startsWith('http')
@@ -363,10 +419,10 @@ async function refreshFromTrakt(
     mediaType: item.mediaType,
     title: item.title,
     year: item.year,
-    imdbId: item.imdbId,
-    tmdbId: item.tmdbId,
-    traktId: item.traktId,
-    tvdbId: item.tvdbId,
+    imdbId: item.imdbId ?? undefined,
+    tmdbId: item.tmdbId ?? undefined,
+    traktId: item.traktId ?? undefined,
+    tvdbId: item.tvdbId ?? undefined,
   }));
 }
 

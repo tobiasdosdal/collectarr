@@ -21,6 +21,7 @@ const __dirname = dirname(__filename);
 import authRoutes from './modules/auth/routes.js';
 import usersRoutes from './modules/users/routes.js';
 import collectionsRoutes from './modules/collections/routes.js';
+import collectionProgressRoutes from './routes/collection-progress.js';
 import syncRoutes from './modules/sync/routes.js';
 import jobsRoutes from './modules/jobs/routes.js';
 
@@ -157,6 +158,7 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
     api.register(authRoutes, { prefix: '/auth' });
     api.register(usersRoutes, { prefix: '/users' });
     api.register(collectionsRoutes, { prefix: '/collections' });
+    api.register(collectionProgressRoutes, { prefix: '/collections' });
     api.register(syncRoutes, { prefix: '/sync' });
 
     api.register(mdblistRoutes, { prefix: '/sources/mdblist' });
