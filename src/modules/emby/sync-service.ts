@@ -8,6 +8,7 @@ import { createEmbyClient } from './client.js';
 import { readFile, readdir } from 'fs/promises';
 import path from 'path';
 import { decryptApiKey } from '../../utils/api-key-crypto.js';
+import { generateCollectionPoster } from '../../utils/collection-poster.js';
 import { SEARCH_RESULTS_LIMIT, SYNC_LOG_ERROR_LIMIT, SYNC_LOG_MATCHED_ITEMS_LIMIT } from '../../config/constants.js';
 import type { PrismaClient, Collection, CollectionItem, EmbyServer } from '@prisma/client';
 
@@ -182,6 +183,28 @@ export async function syncCollectionToEmby({
       }
 
       console.log(`[Emby Sync] Checking poster sync - posterPath: ${collection.posterPath ? 'YES' : 'NO'}, embyCollection?.Id: ${embyCollection?.Id ? 'YES' : 'NO'}`);
+      
+      // Auto-generate poster if missing
+      if (!collection.posterPath && embyCollection?.Id) {
+        console.log(`[Emby Sync] Collection "${collection.name}" has no poster, auto-generating...`);
+        try {
+          const posterUrl = await generateCollectionPoster({
+            collectionId: collection.id,
+            collectionName: collection.name,
+          });
+          if (posterUrl) {
+            await prisma.collection.update({
+              where: { id: collection.id },
+              data: { posterPath: posterUrl },
+            });
+            collection.posterPath = posterUrl;
+            console.log(`[Emby Sync] Auto-generated poster for "${collection.name}": ${posterUrl}`);
+          }
+        } catch (genError) {
+          console.warn(`[Emby Sync] Failed to auto-generate poster for "${collection.name}":`, (genError as Error).message);
+        }
+      }
+      
       if (collection.posterPath && embyCollection?.Id) {
         console.log(`[Emby Sync] Collection "${collection.name}" has posterPath: ${collection.posterPath}`);
         console.log(`[Emby Sync] Emby Collection ID: ${embyCollection.Id}`);
