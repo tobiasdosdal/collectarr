@@ -181,21 +181,30 @@ export async function syncCollectionToEmby({
         }
       }
 
+      console.log(`[Emby Sync] Checking poster sync - posterPath: ${collection.posterPath ? 'YES' : 'NO'}, embyCollection?.Id: ${embyCollection?.Id ? 'YES' : 'NO'}`);
       if (collection.posterPath && embyCollection?.Id) {
+        console.log(`[Emby Sync] Collection "${collection.name}" has posterPath: ${collection.posterPath}`);
+        console.log(`[Emby Sync] Emby Collection ID: ${embyCollection.Id}`);
         try {
-          const posterData = await getCollectionPosterData(collection.id);
+          const posterData = await getCollectionPosterData(collection.id, collection.posterPath);
           if (posterData) {
-            await client.uploadItemImage(
+            console.log(`[Emby Sync] Got poster data: ${posterData.buffer.length} bytes, mimeType: ${posterData.mimeType}`);
+            const uploadResult = await client.uploadItemImage(
               embyCollection.Id,
               'Primary',
               posterData.buffer,
               posterData.mimeType
             );
+            console.log(`[Emby Sync] Poster upload result: ${uploadResult}`);
             console.log(`Synced poster for collection "${collection.name}" to Emby`);
+          } else {
+            console.warn(`[Emby Sync] No poster data returned for "${collection.name}"`);
           }
         } catch (posterError) {
-          console.warn(`Failed to sync poster for "${collection.name}":`, (posterError as Error).message);
+          console.warn(`[Emby Sync] Failed to sync poster for "${collection.name}":`, (posterError as Error).message);
         }
+      } else {
+        console.log(`[Emby Sync] Collection "${collection.name}" has no posterPath or no embyCollection.Id`);
       }
     }
 
@@ -205,41 +214,49 @@ export async function syncCollectionToEmby({
       result.status = 'FAILED';
     }
 
-    await prisma.syncLog.create({
-      data: {
-        userId: userId || null,
-        embyServerId: embyServer.id,
-        collectionId: collection.id,
-        status: result.status,
-        itemsTotal: result.itemsTotal,
-        itemsMatched: result.itemsMatched,
-        itemsFailed: result.itemsFailed,
-        errorMessage: result.errors.length > 0 ? result.errors.slice(0, SYNC_LOG_ERROR_LIMIT).join('; ') : null,
-        details: JSON.stringify({
-          matchedItems: result.matchedItems.slice(0, SYNC_LOG_MATCHED_ITEMS_LIMIT),
-          errors: result.errors.slice(0, 20),
-        }),
-        completedAt: new Date(),
-      },
-    });
+    try {
+      await prisma.syncLog.create({
+        data: {
+          userId: null,
+          embyServerId: embyServer.id,
+          collectionId: collection.id,
+          status: result.status,
+          itemsTotal: result.itemsTotal,
+          itemsMatched: result.itemsMatched,
+          itemsFailed: result.itemsFailed,
+          errorMessage: result.errors.length > 0 ? result.errors.slice(0, SYNC_LOG_ERROR_LIMIT).join('; ') : null,
+          details: JSON.stringify({
+            matchedItems: result.matchedItems.slice(0, SYNC_LOG_MATCHED_ITEMS_LIMIT),
+            errors: result.errors.slice(0, 20),
+          }),
+          completedAt: new Date(),
+        },
+      });
+    } catch (logError) {
+      console.error('Failed to create sync log:', (logError as Error).message);
+    }
 
   } catch (error) {
     result.status = 'FAILED';
     result.errors.push(`Sync error: ${(error as Error).message}`);
 
-    await prisma.syncLog.create({
-      data: {
-        userId: userId || null,
-        embyServerId: embyServer.id,
-        collectionId: collection.id,
-        status: 'FAILED',
-        itemsTotal: result.itemsTotal,
-        itemsMatched: 0,
-        itemsFailed: result.itemsTotal,
-        errorMessage: (error as Error).message,
-        completedAt: new Date(),
-      },
-    });
+    try {
+      await prisma.syncLog.create({
+        data: {
+          userId: null,
+          embyServerId: embyServer.id,
+          collectionId: collection.id,
+          status: 'FAILED',
+          itemsTotal: result.itemsTotal,
+          itemsMatched: 0,
+          itemsFailed: result.itemsTotal,
+          errorMessage: (error as Error).message,
+          completedAt: new Date(),
+        },
+      });
+    } catch (logError) {
+      console.error('Failed to create sync log:', (logError as Error).message);
+    }
   }
 
   return result;
@@ -356,9 +373,41 @@ export async function removeCollectionFromEmby({
   return { success: false, message: `Collection "${collectionName}" not found in Emby` };
 }
 
-async function getCollectionPosterData(collectionId: string): Promise<PosterData | null> {
+async function getCollectionPosterData(collectionId: string, posterPath: string | null): Promise<PosterData | null> {
+  // If no poster path, return null
+  if (!posterPath) {
+    console.log(`[getCollectionPosterData] No posterPath provided for collection ${collectionId}`);
+    return null;
+  }
+
+  console.log(`[getCollectionPosterData] Processing poster for collection ${collectionId}: ${posterPath}`);
+
   try {
+    // If it's a URL (external image from TMDB, etc.), fetch it
+    if (posterPath.startsWith('http://') || posterPath.startsWith('https://')) {
+      console.log(`[getCollectionPosterData] Fetching from URL: ${posterPath}`);
+      const response = await fetch(posterPath);
+      console.log(`[getCollectionPosterData] Fetch response: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        console.warn(`[getCollectionPosterData] Failed to fetch poster from URL: ${response.status} ${response.statusText}`);
+        return null;
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      
+      // Determine mime type from response headers or URL
+      const contentType = response.headers.get('content-type');
+      const mimeType = contentType || getMimeTypeFromUrl(posterPath);
+      
+      console.log(`[getCollectionPosterData] Successfully fetched ${buffer.length} bytes, mimeType: ${mimeType}`);
+      return { buffer, mimeType };
+    }
+    
+    // Otherwise, it's a local file path - read from disk
+    console.log(`[getCollectionPosterData] Looking for local file in ${POSTERS_DIR}`);
     const files = await readdir(POSTERS_DIR);
+    console.log(`[getCollectionPosterData] Found ${files.length} files in posters directory`);
 
     // Look for exact matches: generated poster OR uploaded poster
     const generatedPosterName = `poster-${collectionId}.png`;
@@ -369,8 +418,10 @@ async function getCollectionPosterData(collectionId: string): Promise<PosterData
     );
 
     if (!posterFile) {
+      console.log(`[getCollectionPosterData] No poster file found for collection ${collectionId}`);
       return null;
     }
+    console.log(`[getCollectionPosterData] Found poster file: ${posterFile}`);
 
     const buffer = await readFile(path.join(POSTERS_DIR, posterFile));
     const ext = posterFile.split('.').pop()?.toLowerCase();
@@ -386,9 +437,21 @@ async function getCollectionPosterData(collectionId: string): Promise<PosterData
       mimeType: ext ? mimeTypes[ext] || 'image/jpeg' : 'image/jpeg',
     };
   } catch (err) {
-    console.warn('Failed to read poster file:', (err as Error).message);
+    console.warn('[getCollectionPosterData] Failed to get poster data:', (err as Error).message);
+    console.warn('[getCollectionPosterData] Error stack:', (err as Error).stack);
     return null;
   }
+}
+
+function getMimeTypeFromUrl(url: string): string {
+  const lowerUrl = url.toLowerCase();
+  if (lowerUrl.endsWith('.png')) return 'image/png';
+  if (lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg')) return 'image/jpeg';
+  if (lowerUrl.endsWith('.webp')) return 'image/webp';
+  if (lowerUrl.endsWith('.gif')) return 'image/gif';
+  // Default to jpeg for TMDB images (they often don't have extensions)
+  if (lowerUrl.includes('image.tmdb.org')) return 'image/jpeg';
+  return 'image/jpeg';
 }
 
 export default {

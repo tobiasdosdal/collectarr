@@ -238,17 +238,28 @@ class EmbyClient extends BaseApiClient {
     const url = new URL(`${this.baseUrl}/Items/${itemId}/Images/${imageType}`);
     url.searchParams.set('api_key', this.apiKey);
 
+    console.log(`[Emby Client] Uploading image to: ${url.toString().replace(this.apiKey, '***')}`);
+    console.log(`[Emby Client] Item ID: ${itemId}, Image Type: ${imageType}, Size: ${imageData.length} bytes, MIME: ${mimeType}`);
+
     try {
+      // Emby expects base64 encoded image data with the correct image MIME type
+      const base64Data = imageData.toString('base64');
+      console.log(`[Emby Client] Converted to base64, length: ${base64Data.length} chars`);
+      
       const response = await fetch(url.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': mimeType,
         },
-        body: new Uint8Array(imageData),
+        body: base64Data,
       });
 
+      console.log(`[Emby Client] Response status: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
-        const error = new Error(`Failed to upload image: ${response.status} ${response.statusText}`) as HttpError;
+        const responseText = await response.text();
+        console.error(`[Emby Client] Error response body: ${responseText}`);
+        const error = new Error(`Failed to upload image: ${response.status} ${response.statusText} - ${responseText}`) as HttpError;
         error.status = response.status;
         throw error;
       }
