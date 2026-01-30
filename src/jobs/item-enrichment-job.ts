@@ -147,13 +147,22 @@ export class ItemEnrichmentJob {
 
       const data = await withRetry(
         async () => {
-          const response = await fetch(url);
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+          
+          try {
+            const response = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeoutId);
 
-          if (!response.ok) {
-            throw new Error(`MDBList API error: ${response.status} ${response.statusText}`);
+            if (!response.ok) {
+              throw new Error(`MDBList API error: ${response.status} ${response.statusText}`);
+            }
+
+            return response.json() as Promise<MDBListItemDetails>;
+          } catch (error) {
+            clearTimeout(timeoutId);
+            throw error;
           }
-
-          return response.json() as Promise<MDBListItemDetails>;
         },
         {
           maxRetries: 2,
@@ -225,7 +234,12 @@ export class ItemEnrichmentJob {
     fn: () => Promise<T>
   ): Promise<T> {
     await new Promise((resolve) => setTimeout(resolve, API_CALL_DELAY_MS));
-    return fn();
+    return Promise.race([
+      fn(),
+      new Promise<T>((_, reject) => 
+        setTimeout(() => reject(new Error('API call timeout after 15s')), 15000)
+      ),
+    ]);
   }
 
   private static async cacheImageWithDelay(url: string): Promise<void> {

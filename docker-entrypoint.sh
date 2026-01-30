@@ -27,9 +27,11 @@ EOF
   fi
 fi
 
-# Run database migrations
+# Run database migrations and regenerate Prisma client
 echo "Running database migrations..."
-npx prisma db push --skip-generate --accept-data-loss
+npx prisma db push --accept-data-loss
+echo "Generating Prisma client..."
+npx prisma generate
 
 # Start the app
 exec node dist-server/server.js
