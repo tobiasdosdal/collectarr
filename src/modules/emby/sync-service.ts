@@ -6,9 +6,12 @@
 
 import { createEmbyClient } from './client.js';
 import { readFile, readdir } from 'fs/promises';
+import path from 'path';
 import { decryptApiKey } from '../../utils/api-key-crypto.js';
 import { SEARCH_RESULTS_LIMIT, SYNC_LOG_ERROR_LIMIT, SYNC_LOG_MATCHED_ITEMS_LIMIT } from '../../config/constants.js';
 import type { PrismaClient, Collection, CollectionItem, EmbyServer } from '@prisma/client';
+
+const POSTERS_DIR = path.resolve(process.cwd(), 'uploads/posters');
 
 interface CollectionWithItems {
   id: string;
@@ -355,14 +358,21 @@ export async function removeCollectionFromEmby({
 
 async function getCollectionPosterData(collectionId: string): Promise<PosterData | null> {
   try {
-    const files = await readdir('uploads/posters');
-    const posterFile = files.find((f) => f.startsWith(collectionId));
+    const files = await readdir(POSTERS_DIR);
+
+    // Look for exact matches: generated poster OR uploaded poster
+    const generatedPosterName = `poster-${collectionId}.png`;
+    const uploadedPosterPattern = new RegExp(`^${collectionId}\\.(jpg|jpeg|png|webp)$`, 'i');
+
+    const posterFile = files.find((f) =>
+      f === generatedPosterName || uploadedPosterPattern.test(f)
+    );
 
     if (!posterFile) {
       return null;
     }
 
-    const buffer = await readFile(`uploads/posters/${posterFile}`);
+    const buffer = await readFile(path.join(POSTERS_DIR, posterFile));
     const ext = posterFile.split('.').pop()?.toLowerCase();
     const mimeTypes: Record<string, string> = {
       jpg: 'image/jpeg',

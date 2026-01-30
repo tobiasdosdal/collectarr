@@ -5,10 +5,14 @@
 
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
+import { unlink } from 'fs/promises';
+import path from 'path';
 import { getCachedImageUrl, queueMissingImages } from '../../utils/image-cache.js';
 import { syncCollections, removeCollectionFromEmby } from '../emby/sync-service.js';
 import { requireAdmin } from '../../shared/middleware/index.js';
 import { createCollectionService } from './service.js';
+
+const POSTERS_DIR = path.resolve(process.cwd(), 'uploads/posters');
 
 const createCollectionSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -223,6 +227,16 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
           fastify.log.error(`Failed to delete collection from Emby server "${embyServer.name}": ${(err as Error).message}`);
         }
       }
+    }
+
+    // Clean up poster files (both generated and uploaded)
+    const generatedPosterPath = path.join(POSTERS_DIR, `poster-${request.params.id}.png`);
+    const posterExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+
+    await unlink(generatedPosterPath).catch(() => {});
+
+    for (const ext of posterExtensions) {
+      await unlink(path.join(POSTERS_DIR, `${request.params.id}.${ext}`)).catch(() => {});
     }
 
     await fastify.prisma.collection.delete({ where: { id: request.params.id } });
