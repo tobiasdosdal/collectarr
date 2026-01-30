@@ -32,12 +32,50 @@ interface CollectionItem {
   year?: number;
   mediaType: 'MOVIE' | 'SHOW';
   posterPath?: string;
+  backdropPath?: string;
   rating?: number;
+  ratingCount?: number;
   inEmby: boolean;
   imdbId?: string;
   tmdbId?: string;
   tvdbId?: string;
   addedAt: string;
+  enrichmentStatus?: 'PENDING' | 'ENRICHED' | 'FAILED';
+  enrichmentAttempts?: number;
+  lastEnrichmentError?: string;
+  enrichedAt?: string;
+}
+
+interface EnrichmentProgress {
+  pending: number;
+  enriched: number;
+  failed: number;
+  total: number;
+  percentComplete: number;
+}
+
+interface ItemEnrichedEvent {
+  itemId: string;
+  title: string;
+  posterPath: string | null;
+  backdropPath: string | null;
+  rating: number | null;
+  ratingCount: number | null;
+}
+
+interface ItemFailedEvent {
+  itemId: string;
+  error: string | undefined;
+  attempts: number;
+}
+
+interface ProgressEvent {
+  collectionId: string;
+  pending: number;
+  enriched: number;
+  failed: number;
+  total: number;
+  percentComplete: number;
 }
 
 interface RadarrServer {
@@ -135,6 +173,15 @@ const CollectionDetail: FC = () => {
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const hasAutoStartedPolling = useRef<boolean>(false);
   const [confirmAction, setConfirmAction] = useState<'deleteCollection' | 'deletePoster' | null>(null);
+  const [enrichmentProgress, setEnrichmentProgress] = useState<EnrichmentProgress>({
+    pending: 0,
+    enriched: 0,
+    failed: 0,
+    total: 0,
+    percentComplete: 100,
+  });
+  const [sseConnected, setSseConnected] = useState<boolean>(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   const startPolling = () => {
     if (pollIntervalRef.current) return;
@@ -208,6 +255,90 @@ const CollectionDetail: FC = () => {
       startPolling();
     }
   }, [collection?.id, loading]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const connectSSE = () => {
+      const eventSource = new EventSource(`/api/v1/collections/${id}/progress`);
+      eventSourceRef.current = eventSource;
+
+      eventSource.onopen = () => {
+        setSseConnected(true);
+      };
+
+      eventSource.addEventListener('item:enriched', (event: MessageEvent) => {
+        const data = JSON.parse(event.data) as ItemEnrichedEvent;
+        setCollection((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            items: prev.items.map((item) =>
+              item.id === data.itemId
+                ? {
+                    ...item,
+                    posterPath: data.posterPath || item.posterPath,
+                    backdropPath: data.backdropPath || item.backdropPath,
+                    rating: data.rating ?? item.rating,
+                    ratingCount: data.ratingCount ?? item.ratingCount,
+                    enrichmentStatus: 'ENRICHED' as const,
+                    enrichedAt: new Date().toISOString(),
+                  }
+                : item
+            ),
+          };
+        });
+      });
+
+      eventSource.addEventListener('item:failed', (event: MessageEvent) => {
+        const data = JSON.parse(event.data) as ItemFailedEvent;
+        setCollection((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            items: prev.items.map((item) =>
+              item.id === data.itemId
+                ? {
+                    ...item,
+                    enrichmentStatus: 'FAILED' as const,
+                    enrichmentAttempts: data.attempts,
+                    lastEnrichmentError: data.error,
+                  }
+                : item
+            ),
+          };
+        });
+      });
+
+      eventSource.addEventListener('progress', (event: MessageEvent) => {
+        const data = JSON.parse(event.data) as ProgressEvent;
+        setEnrichmentProgress({
+          pending: data.pending,
+          enriched: data.enriched,
+          failed: data.failed,
+          total: data.total,
+          percentComplete: data.percentComplete,
+        });
+      });
+
+      eventSource.onerror = () => {
+        setSseConnected(false);
+        eventSource.close();
+        eventSourceRef.current = null;
+        setTimeout(connectSSE, 5000);
+      };
+    };
+
+    connectSSE();
+
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      setSseConnected(false);
+    };
+  }, [id]);
 
   const loadDownloadServers = async (): Promise<void> => {
     setLoadingDownloadStatus(true);
@@ -697,7 +828,31 @@ const CollectionDetail: FC = () => {
           )}
         </div>
       ) : (
-        <div className="items-grid">
+        <>
+          {enrichmentProgress.pending > 0 && enrichmentProgress.percentComplete < 100 && (
+            <div className="mb-4 p-3 rounded-lg bg-secondary/50 border border-border">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="flex items-center gap-2">
+                  {sseConnected && <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />}
+                  Enriching collection...
+                </span>
+                <span className="font-mono">{enrichmentProgress.enriched}/{enrichmentProgress.total}</span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-secondary overflow-hidden">
+                <div 
+                  className="h-full bg-primary transition-all duration-500"
+                  style={{ width: `${enrichmentProgress.percentComplete}%` }}
+                />
+              </div>
+              {enrichmentProgress.failed > 0 && (
+                <div className="mt-2 text-xs text-amber-500 flex items-center gap-1">
+                  <AlertTriangle size={12} />
+                  {enrichmentProgress.failed} items failed to enrich
+                </div>
+              )}
+            </div>
+          )}
+          <div className="items-grid">
           {(collection.items || [])
             .filter((item) => {
               if (filter === 'inLibrary') return item.inEmby;
@@ -722,9 +877,29 @@ const CollectionDetail: FC = () => {
               <div className="item-poster">
                 {item.posterPath ? (
                   <img src={item.posterPath} alt={item.title} loading="lazy" />
+                ) : item.enrichmentStatus === 'PENDING' ? (
+                  <div className="item-poster-placeholder animate-pulse flex flex-col items-center justify-center">
+                    <Loader2 size={32} className="animate-spin text-primary" />
+                    <span className="text-xs mt-2 text-muted-foreground">Loading...</span>
+                  </div>
+                ) : item.enrichmentStatus === 'FAILED' ? (
+                  <div className="item-poster-placeholder flex flex-col items-center justify-center bg-red-500/10">
+                    <XCircle size={32} className="text-red-400" />
+                    <span className="text-xs mt-2 text-red-400">Failed</span>
+                    {item.enrichmentAttempts && (
+                      <span className="text-[10px] text-red-400/70">
+                        {item.enrichmentAttempts} attempts
+                      </span>
+                    )}
+                  </div>
                 ) : (
                   <div className="item-poster-placeholder">
                     {item.mediaType === 'MOVIE' ? <Film size={32} /> : <Tv size={32} />}
+                  </div>
+                )}
+                {item.enrichmentStatus === 'PENDING' && !item.posterPath && (
+                  <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/80 text-primary-foreground">
+                    Enriching...
                   </div>
                 )}
                 {item.rating && (
@@ -884,7 +1059,8 @@ const CollectionDetail: FC = () => {
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        </>
       )}
 
       {showAddModal && (
