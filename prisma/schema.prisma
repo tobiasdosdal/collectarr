@@ -75,6 +75,10 @@ model CollectionItem {
   inEmby       Boolean  @default(false)
   embyItemId   String?
   addedAt      DateTime @default(now())
+  enrichmentStatus String @default("PENDING")
+  enrichmentAttempts Int @default(0)
+  lastEnrichmentError String?
+  enrichedAt   DateTime?
 
   collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
 
@@ -86,6 +90,7 @@ model CollectionItem {
   @@index([collectionId, inEmby])
   @@index([collectionId, addedAt])
   @@index([tmdbId, imdbId])
+  @@index([enrichmentStatus])
 }
 
 model EmbyServer {
