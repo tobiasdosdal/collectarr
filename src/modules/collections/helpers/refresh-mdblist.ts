@@ -7,8 +7,9 @@ import type { AppConfig } from '../../../types/index.js';
 import type { RefreshedItem } from '../../../types/collection.types.js';
 import type { MDBListItem } from '../../../types/external.types.js';
 import { cacheImage } from '../../../utils/image-cache.js';
-import { fetchTmdbPoster, fetchTmdbBackdrop } from '../../../utils/tmdb-api.js';
-import { withRetry } from '../../../utils/retry.js';
+import { fetchTmdbPoster, fetchTmdbBackdrop, fetchTmdbRating } from '../../../utils/tmdb-api.js';
+import { createTMDbClient } from '../../../modules/external/tmdb/client.js';
+import { withRetry, RateLimiter } from '../../../utils/retry.js';
 
 interface MDBListDetail {
   score?: number;
@@ -36,9 +37,12 @@ interface MDBListApiItem {
   imdbvotes?: number;
 }
 
+// Rate limiter for MDBList API: 40 requests per 10 seconds (4 req/sec with safety margin)
+const mdblistRateLimiter = new RateLimiter(35, 10000);
+
 const BATCH_SIZE = 10;
-const CONCURRENCY = 5;
-const ITEM_DELAY_MS = 100;
+const CONCURRENCY = 3; // Reduced from 5 to be more conservative
+const ITEM_DELAY_MS = 200; // Increased from 100 to reduce API pressure
 
 export async function refreshFromMdblist(
   listId: string,
@@ -136,10 +140,11 @@ async function fetchMdblistItemDetailsOptimized(
     };
 
     // Only fetch details if we have IMDb ID and missing data
+    let detailFetchFailed = false;
     if (imdbId && needsDetailFetch(result)) {
       try {
         const detail = await fetchItemDetail(imdbId, apiKey);
-        
+
         if (detail) {
           // Merge detail data (detail takes precedence)
           result.tmdbId = detail.tmdbid?.toString() || result.tmdbId;
@@ -148,7 +153,7 @@ async function fetchMdblistItemDetailsOptimized(
           result.year = detail.year || result.year;
           result.rating = detail.score || detail.imdbrating || result.rating;
           result.ratingCount = detail.imdbvotes || result.ratingCount;
-          
+
           if (detail.poster) {
             result.posterPath = buildPosterUrl(detail.poster);
           }
@@ -157,7 +162,41 @@ async function fetchMdblistItemDetailsOptimized(
           }
         }
       } catch (err) {
-        // Continue with basic data if detail fetch fails
+        detailFetchFailed = true;
+        console.warn(`MDBList detail fetch failed for ${imdbId}:`, (err as Error).message);
+      }
+    }
+
+    // If we have imdbId but no tmdbId, try to translate using TMDB
+    if (imdbId && !result.tmdbId) {
+      try {
+        const tmdbClient = createTMDbClient(config);
+        if (tmdbClient) {
+          const found = await tmdbClient.findByExternalId(imdbId, 'imdb_id');
+          if (result.mediaType === 'MOVIE' && found.movies.length > 0) {
+            result.tmdbId = found.movies[0]!.id.toString();
+            console.log(`TMDB ID translation: ${imdbId} -> ${result.tmdbId} for "${result.title}"`);
+          } else if (result.mediaType === 'SHOW' && found.shows.length > 0) {
+            result.tmdbId = found.shows[0]!.id.toString();
+            console.log(`TMDB ID translation: ${imdbId} -> ${result.tmdbId} for "${result.title}"`);
+          }
+        }
+      } catch (err) {
+        console.warn(`TMDB ID translation failed for ${imdbId}:`, (err as Error).message);
+      }
+    }
+
+    // Fallback to TMDB for rating if MDBList failed or returned no rating
+    if (result.tmdbId && (!result.rating || detailFetchFailed)) {
+      try {
+        const tmdbRating = await fetchTmdbRating(result.tmdbId, result.mediaType);
+        if (tmdbRating.rating && !result.rating) {
+          result.rating = tmdbRating.rating;
+          result.ratingCount = tmdbRating.ratingCount;
+          console.log(`TMDB fallback: fetched rating for "${result.title}": ${result.rating}`);
+        }
+      } catch (err) {
+        console.warn(`TMDB rating fetch failed for "${result.title}" (tmdbId: ${result.tmdbId}):`, (err as Error).message);
       }
     }
 
@@ -184,26 +223,29 @@ async function fetchMdblistItemDetailsOptimized(
 }
 
 function needsDetailFetch(item: RefreshedItem): boolean {
-  return !item.rating || !item.backdropPath || !item.posterPath;
+  // Fetch details if missing any of these fields, OR if we don't have tmdbId (needed for TMDB fallback)
+  return !item.rating || !item.backdropPath || !item.posterPath || !item.tmdbId;
 }
 
 async function fetchItemDetail(imdbId: string, apiKey: string): Promise<MDBListDetail | null> {
-  return withRetry(
-    async () => {
-      const response = await fetch(`https://mdblist.com/api/?apikey=${apiKey}&i=${imdbId}`);
-      
-      if (response.ok) {
-        return response.json() as Promise<MDBListDetail>;
-      }
-      
-      if (response.status === 404) {
-        return null;
-      }
-      
-      throw new Error(`MDBList detail API error: ${response.status}`);
-    },
-    { maxRetries: 2, retryableStatusCodes: [429, 500, 502, 503, 504] }
-  );
+  return mdblistRateLimiter.execute(async () => {
+    return withRetry(
+      async () => {
+        const response = await fetch(`https://mdblist.com/api/?apikey=${apiKey}&i=${imdbId}`);
+
+        if (response.ok) {
+          return response.json() as Promise<MDBListDetail>;
+        }
+
+        if (response.status === 404) {
+          return null;
+        }
+
+        throw new Error(`MDBList detail API error: ${response.status}`);
+      },
+      { maxRetries: 3, retryableStatusCodes: [429, 500, 502, 503, 504] }
+    );
+  });
 }
 
 function buildPosterUrl(poster: string | undefined): string | null {

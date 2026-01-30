@@ -60,11 +60,19 @@ class TMDbClient {
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = new URL(`${this.baseUrl}${endpoint}`);
 
+    // Check if API key is a v4 Bearer token (JWT format) or v3 API key
+    const isV4Token = this.apiKey.startsWith('eyJ');
     const headers: Record<string, string> = {
       'Accept': 'application/json',
-      'Authorization': `Bearer ${this.apiKey}`,
       ...(options.headers as Record<string, string> || {}),
     };
+
+    if (isV4Token) {
+      headers['Authorization'] = `Bearer ${this.apiKey}`;
+    } else {
+      // v3 API key - use query parameter
+      url.searchParams.set('api_key', this.apiKey);
+    }
 
     try {
       const response = await fetch(url.toString(), {

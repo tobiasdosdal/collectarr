@@ -16,6 +16,8 @@ export async function waitForTmdbRateLimit(): Promise<void> {
 interface TmdbMovieResponse {
   poster_path?: string;
   backdrop_path?: string;
+  vote_average?: number;
+  vote_count?: number;
 }
 
 export async function fetchTmdbPoster(tmdbId: string, mediaType: string): Promise<string | null> {
@@ -86,6 +88,43 @@ export async function fetchTmdbBackdrop(tmdbId: string, mediaType: string): Prom
   }
 
   return null;
+}
+
+export async function fetchTmdbRating(tmdbId: string, mediaType: string): Promise<{ rating: number | null; ratingCount: number | null }> {
+  const tmdbApiKey = process.env.TMDB_API_KEY;
+  if (!tmdbApiKey) {
+    return { rating: null, ratingCount: null };
+  }
+
+  try {
+    await waitForTmdbRateLimit();
+    const type = mediaType === 'SHOW' ? 'tv' : 'movie';
+
+    const data = await withRetry(
+      async () => {
+        const response = await fetch(
+          `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${tmdbApiKey}`
+        );
+
+        if (!response.ok) {
+          throw new Error(`TMDB API error: ${response.status} ${response.statusText}`);
+        }
+
+        return response.json() as Promise<TmdbMovieResponse>;
+      },
+      { maxRetries: 2, retryableStatusCodes: [429, 500, 502, 503, 504] }
+    );
+
+    // TMDB vote_average is 0-10 scale, convert to match MDBList 0-100 scale
+    const rating = data.vote_average ? Math.round(data.vote_average * 10) : null;
+    const ratingCount = data.vote_count || null;
+
+    return { rating, ratingCount };
+  } catch (error) {
+    console.warn(`TMDB rating fetch failed for ${tmdbId}:`, (error as Error).message);
+  }
+
+  return { rating: null, ratingCount: null };
 }
 
 export async function searchTmdbByTitle(
