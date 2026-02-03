@@ -3,6 +3,8 @@
  * Business logic for collection management
  */
 
+import fs from 'fs/promises';
+import path from 'path';
 import type { FastifyInstance, FastifyBaseLogger } from 'fastify';
 import type { PrismaClient } from '@prisma/client';
 import type { AppConfig, RefreshedItem, MDBListItem } from '../../types/index.js';
@@ -11,6 +13,17 @@ import { syncCollections } from '../emby/sync-service.js';
 import { refreshFromMdblist, fetchMdblistItemDetails } from './helpers/refresh-mdblist.js';
 import { refreshFromTrakt } from './helpers/refresh-trakt.js';
 import { generateCollectionPoster } from '../../utils/collection-poster.js';
+
+const POSTERS_DIR = path.resolve(process.cwd(), 'uploads/posters');
+
+async function hasUploadedPoster(collectionId: string): Promise<boolean> {
+  try {
+    const files = await fs.readdir(POSTERS_DIR);
+    return files.some((file) => file.startsWith(collectionId));
+  } catch {
+    return false;
+  }
+}
 
 export interface CollectionServiceOptions {
   prisma: PrismaClient;
@@ -237,24 +250,37 @@ export class CollectionService {
         
         const collection = await this.prisma.collection.findUnique({
           where: { id: collectionId },
-          select: { name: true },
+          select: { name: true, posterPath: true },
         });
         
         if (collection) {
-          generateCollectionPoster({
-            collectionId,
-            collectionName: collection.name,
-          }).then(async (posterUrl) => {
-            if (posterUrl) {
+          const customPosterPath = `/api/v1/collections/${collectionId}/poster`;
+          const uploadedPosterExists = await hasUploadedPoster(collectionId);
+
+          if (uploadedPosterExists) {
+            if (collection.posterPath !== customPosterPath) {
               await this.prisma.collection.update({
                 where: { id: collectionId },
-                data: { posterPath: posterUrl },
+                data: { posterPath: customPosterPath },
               });
-              this.log.info(`Generated poster for collection ${collectionId}`);
             }
-          }).catch(err => {
-            this.log.warn(`Failed to generate poster for collection ${collectionId}: ${err.message}`);
-          });
+            this.log.info(`Custom poster detected for collection ${collectionId}, skipping auto-generation`);
+          } else {
+            generateCollectionPoster({
+              collectionId,
+              collectionName: collection.name,
+            }).then(async (posterUrl) => {
+              if (posterUrl) {
+                await this.prisma.collection.update({
+                  where: { id: collectionId },
+                  data: { posterPath: posterUrl },
+                });
+                this.log.info(`Generated poster for collection ${collectionId}`);
+              }
+            }).catch(err => {
+              this.log.warn(`Failed to generate poster for collection ${collectionId}: ${err.message}`);
+            });
+          }
         }
       }
       

@@ -8,6 +8,32 @@ function resolveTmdbApiKey(apiKey?: string): string | undefined {
   return apiKey || process.env.TMDB_API_KEY;
 }
 
+function buildTmdbRequest(
+  apiKey: string,
+  path: string,
+  queryParams?: URLSearchParams
+): { url: string; headers: Record<string, string> } {
+  const url = new URL(`https://api.themoviedb.org/3${path}`);
+  if (queryParams) {
+    for (const [key, value] of queryParams.entries()) {
+      url.searchParams.set(key, value);
+    }
+  }
+
+  const isV4Token = apiKey.startsWith('eyJ');
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+  };
+
+  if (isV4Token) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  } else {
+    url.searchParams.set('api_key', apiKey);
+  }
+
+  return { url: url.toString(), headers };
+}
+
 export async function waitForTmdbRateLimit(): Promise<void> {
   const now = Date.now();
   const timeSinceLastCall = now - lastTmdbApiCallTime;
@@ -40,9 +66,8 @@ export async function fetchTmdbPoster(
     
     const data = await withRetry(
       async () => {
-        const response = await fetch(
-          `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${tmdbApiKey}`
-        );
+        const request = buildTmdbRequest(tmdbApiKey, `/${type}/${tmdbId}`);
+        const response = await fetch(request.url, { headers: request.headers });
         
         if (!response.ok) {
           throw new Error(`TMDB API error: ${response.status} ${response.statusText}`);
@@ -79,9 +104,8 @@ export async function fetchTmdbBackdrop(
     
     const data = await withRetry(
       async () => {
-        const response = await fetch(
-          `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${tmdbApiKey}`
-        );
+        const request = buildTmdbRequest(tmdbApiKey, `/${type}/${tmdbId}`);
+        const response = await fetch(request.url, { headers: request.headers });
         
         if (!response.ok) {
           throw new Error(`TMDB API error: ${response.status} ${response.statusText}`);
@@ -118,9 +142,8 @@ export async function fetchTmdbRating(
 
     const data = await withRetry(
       async () => {
-        const response = await fetch(
-          `https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${tmdbApiKey}`
-        );
+        const request = buildTmdbRequest(tmdbApiKey, `/${type}/${tmdbId}`);
+        const response = await fetch(request.url, { headers: request.headers });
 
         if (!response.ok) {
           throw new Error(`TMDB API error: ${response.status} ${response.statusText}`);
@@ -158,12 +181,12 @@ export async function searchTmdbByTitle(
   try {
     await waitForTmdbRateLimit();
     const type = mediaType === 'SHOW' ? 'tv' : 'movie';
-    let searchUrl = `https://api.themoviedb.org/3/search/${type}?api_key=${tmdbApiKey}&query=${encodeURIComponent(title)}`;
+    const params = new URLSearchParams({ query: title });
     if (year) {
-      searchUrl += `&year=${year}`;
+      params.set('year', year.toString());
     }
-
-    const response = await fetch(searchUrl);
+    const request = buildTmdbRequest(tmdbApiKey, `/search/${type}`, params);
+    const response = await fetch(request.url, { headers: request.headers });
 
     if (response.ok) {
       const data = (await response.json()) as { results?: Array<{ poster_path?: string; id?: number; title?: string }> };
