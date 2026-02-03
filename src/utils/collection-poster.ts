@@ -1,14 +1,15 @@
-import { createCanvas } from 'canvas';
-import path from 'path';
 import fs from 'fs/promises';
+import path from 'path';
 import { fileURLToPath } from 'url';
+import { createCanvas } from 'canvas';
+import { getPostersDir } from './paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const POSTER_WIDTH = 500;
 const POSTER_HEIGHT = 750;
-const POSTERS_DIR = path.resolve(process.cwd(), 'uploads/posters');
+const POSTERS_DIR = getPostersDir();
 const FONT_SIZE = 52;
 const MAX_CHARS_PER_LINE = 16;
 const LINE_HEIGHT = 70;

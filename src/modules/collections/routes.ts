@@ -11,8 +11,9 @@ import { getCachedImageUrl, queueMissingImages } from '../../utils/image-cache.j
 import { syncCollections, removeCollectionFromEmby } from '../emby/sync-service.js';
 import { requireAdmin } from '../../shared/middleware/index.js';
 import { createCollectionService } from './service.js';
+import { getPostersDir } from '../../utils/paths.js';
 
-const POSTERS_DIR = path.resolve(process.cwd(), 'uploads/posters');
+const POSTERS_DIR = getPostersDir();
 
 const createCollectionSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -364,7 +365,7 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
 
     const ext = data.mimetype.split('/')[1];
     const filename = `${request.params.id}.${ext}`;
-    const filepath = `uploads/posters/${filename}`;
+    const filepath = path.join(POSTERS_DIR, filename);
 
     const { pipeline } = await import('stream/promises');
     const { createWriteStream } = await import('fs');
@@ -386,7 +387,7 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     }
 
     const { readdir } = await import('fs/promises');
-    const files = await readdir('uploads/posters');
+    const files = await readdir(POSTERS_DIR);
     const posterFile = files.find((f) => f.startsWith(request.params.id));
 
     if (!posterFile) {
@@ -398,7 +399,7 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     const mimeTypes: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
 
     reply.header('Content-Type', mimeTypes[ext || ''] || 'image/jpeg');
-    return reply.send(createReadStream(`uploads/posters/${posterFile}`));
+    return reply.send(createReadStream(path.join(POSTERS_DIR, posterFile)));
   });
 
   // Delete collection poster (admin only)
@@ -410,10 +411,10 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
 
     const { readdir, unlink } = await import('fs/promises');
     try {
-      const files = await readdir('uploads/posters');
+      const files = await readdir(POSTERS_DIR);
       const posterFile = files.find((f) => f.startsWith(request.params.id));
       if (posterFile) {
-        await unlink(`uploads/posters/${posterFile}`);
+        await unlink(path.join(POSTERS_DIR, posterFile));
       }
     } catch {
       // Ignore file not found errors

@@ -4,17 +4,17 @@
  */
 
 import fs from 'fs/promises';
-import path from 'path';
 import type { FastifyInstance, FastifyBaseLogger } from 'fastify';
 import type { PrismaClient } from '@prisma/client';
 import type { AppConfig, RefreshedItem, MDBListItem } from '../../types/index.js';
 import { cacheImage } from '../../utils/image-cache.js';
 import { syncCollections } from '../emby/sync-service.js';
-import { refreshFromMdblist, fetchMdblistItemDetails } from './helpers/refresh-mdblist.js';
+import { refreshFromMdblist } from './helpers/refresh-mdblist.js';
 import { refreshFromTrakt } from './helpers/refresh-trakt.js';
 import { generateCollectionPoster } from '../../utils/collection-poster.js';
+import { getPostersDir } from '../../utils/paths.js';
 
-const POSTERS_DIR = path.resolve(process.cwd(), 'uploads/posters');
+const POSTERS_DIR = getPostersDir();
 
 async function hasUploadedPoster(collectionId: string): Promise<boolean> {
   try {

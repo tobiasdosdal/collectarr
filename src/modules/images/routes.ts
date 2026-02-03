@@ -7,6 +7,7 @@ import { getCachedImageWithStats, cacheImage, validateFilename, getMetadata, get
 import fs from 'fs/promises';
 import path from 'path';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { getPostersDir } from '../../utils/paths.js';
 
 const CACHE_DIR = process.env.IMAGE_CACHE_DIR || './data/image-cache';
 
@@ -233,7 +234,7 @@ export default async function imageRoutes(fastify: FastifyInstance): Promise<voi
     }
   });
 
-const POSTERS_DIR = path.resolve(process.cwd(), 'uploads/posters');
+const POSTERS_DIR = getPostersDir();
 
   // Serve generated collection collage posters
   fastify.get<{ Params: { filename: string } }>('/collage/:filename', async (request, reply) => {

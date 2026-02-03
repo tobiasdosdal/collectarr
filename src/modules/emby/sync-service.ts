@@ -9,10 +9,11 @@ import { readFile, readdir } from 'fs/promises';
 import path from 'path';
 import { decryptApiKey } from '../../utils/api-key-crypto.js';
 import { generateCollectionPoster } from '../../utils/collection-poster.js';
+import { getPostersDir } from '../../utils/paths.js';
 import { SEARCH_RESULTS_LIMIT, SYNC_LOG_ERROR_LIMIT, SYNC_LOG_MATCHED_ITEMS_LIMIT } from '../../config/constants.js';
 import type { PrismaClient, Collection, CollectionItem, EmbyServer } from '@prisma/client';
 
-const POSTERS_DIR = path.resolve(process.cwd(), 'uploads/posters');
+const POSTERS_DIR = getPostersDir();
 
 interface CollectionWithItems {
   id: string;
