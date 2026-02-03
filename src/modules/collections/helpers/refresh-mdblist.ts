@@ -47,7 +47,8 @@ const ITEM_DELAY_MS = 200; // Increased from 100 to reduce API pressure
 export async function refreshFromMdblist(
   listId: string,
   apiKey: string | undefined,
-  config: AppConfig
+  config: AppConfig,
+  tmdbApiKeyOverride?: string
 ): Promise<RefreshedItem[]> {
   if (!apiKey) {
     throw new Error('MDBList API key is required');
@@ -65,7 +66,7 @@ export async function refreshFromMdblist(
       const batchResults = await Promise.all(
         batch.map(async (item, idx) => {
           await new Promise(r => setTimeout(r, idx * ITEM_DELAY_MS));
-          return fetchMdblistItemDetailsOptimized(item, apiKey, config);
+          return fetchMdblistItemDetailsOptimized(item, apiKey, config, tmdbApiKeyOverride);
         })
       );
       
@@ -119,9 +120,11 @@ async function fetchListItems(
 async function fetchMdblistItemDetailsOptimized(
   item: MDBListApiItem,
   apiKey: string,
-  config: AppConfig
+  config: AppConfig,
+  tmdbApiKeyOverride?: string
 ): Promise<RefreshedItem | null> {
   try {
+    const tmdbApiKey = tmdbApiKeyOverride || config.external.tmdb.apiKey;
     const imdbId = item.imdb_id;
     
     // Build result from basic data first
@@ -170,10 +173,10 @@ async function fetchMdblistItemDetailsOptimized(
     // If we have imdbId but no tmdbId, try to translate using TMDB
     if (imdbId && !result.tmdbId) {
       try {
-        const tmdbClient = createTMDbClient(config);
-        if (tmdbClient) {
-          const found = await tmdbClient.findByExternalId(imdbId, 'imdb_id');
-          if (result.mediaType === 'MOVIE' && found.movies.length > 0) {
+          const tmdbClient = createTMDbClient(config, tmdbApiKey);
+          if (tmdbClient) {
+            const found = await tmdbClient.findByExternalId(imdbId, 'imdb_id');
+            if (result.mediaType === 'MOVIE' && found.movies.length > 0) {
             result.tmdbId = found.movies[0]!.id.toString();
             console.log(`TMDB ID translation: ${imdbId} -> ${result.tmdbId} for "${result.title}"`);
           } else if (result.mediaType === 'SHOW' && found.shows.length > 0) {
@@ -189,7 +192,7 @@ async function fetchMdblistItemDetailsOptimized(
     // Fallback to TMDB for rating if MDBList failed or returned no rating
     if (result.tmdbId && (!result.rating || detailFetchFailed)) {
       try {
-        const tmdbRating = await fetchTmdbRating(result.tmdbId, result.mediaType);
+        const tmdbRating = await fetchTmdbRating(result.tmdbId, result.mediaType, tmdbApiKey);
         if (tmdbRating.rating && !result.rating) {
           result.rating = tmdbRating.rating;
           result.ratingCount = tmdbRating.ratingCount;
@@ -202,7 +205,7 @@ async function fetchMdblistItemDetailsOptimized(
 
     // Fallback to TMDB if still missing poster
     if (!result.posterPath && result.tmdbId) {
-      const tmdbPoster = await fetchTmdbPoster(result.tmdbId, result.mediaType);
+      const tmdbPoster = await fetchTmdbPoster(result.tmdbId, result.mediaType, tmdbApiKey);
       if (tmdbPoster) {
         result.posterPath = tmdbPoster;
       }
@@ -271,7 +274,8 @@ function buildBackdropUrl(backdrop: string | undefined): string | null {
 export async function fetchMdblistItemDetails(
   item: MDBListItem,
   apiKey: string,
-  config: AppConfig
+  config: AppConfig,
+  tmdbApiKeyOverride?: string
 ): Promise<RefreshedItem> {
   const apiItem: MDBListApiItem = {
     mediatype: (item.mediatype || item.media_type) === 'movie' ? 'movie' : 'show',
@@ -284,7 +288,7 @@ export async function fetchMdblistItemDetails(
     poster: item.poster,
   };
 
-  const result = await fetchMdblistItemDetailsOptimized(apiItem, apiKey, config);
+  const result = await fetchMdblistItemDetailsOptimized(apiItem, apiKey, config, tmdbApiKeyOverride);
   
   if (!result) {
     throw new Error('Failed to fetch item details');

@@ -4,6 +4,10 @@ import { handleNetworkError } from './error-handling.js';
 
 let lastTmdbApiCallTime = 0;
 
+function resolveTmdbApiKey(apiKey?: string): string | undefined {
+  return apiKey || process.env.TMDB_API_KEY;
+}
+
 export async function waitForTmdbRateLimit(): Promise<void> {
   const now = Date.now();
   const timeSinceLastCall = now - lastTmdbApiCallTime;
@@ -20,8 +24,12 @@ interface TmdbMovieResponse {
   vote_count?: number;
 }
 
-export async function fetchTmdbPoster(tmdbId: string, mediaType: string): Promise<string | null> {
-  const tmdbApiKey = process.env.TMDB_API_KEY;
+export async function fetchTmdbPoster(
+  tmdbId: string,
+  mediaType: string,
+  apiKey?: string
+): Promise<string | null> {
+  const tmdbApiKey = resolveTmdbApiKey(apiKey);
   if (!tmdbApiKey) {
     return null;
   }
@@ -55,8 +63,12 @@ export async function fetchTmdbPoster(tmdbId: string, mediaType: string): Promis
   return null;
 }
 
-export async function fetchTmdbBackdrop(tmdbId: string, mediaType: string): Promise<string | null> {
-  const tmdbApiKey = process.env.TMDB_API_KEY;
+export async function fetchTmdbBackdrop(
+  tmdbId: string,
+  mediaType: string,
+  apiKey?: string
+): Promise<string | null> {
+  const tmdbApiKey = resolveTmdbApiKey(apiKey);
   if (!tmdbApiKey) {
     return null;
   }
@@ -90,8 +102,12 @@ export async function fetchTmdbBackdrop(tmdbId: string, mediaType: string): Prom
   return null;
 }
 
-export async function fetchTmdbRating(tmdbId: string, mediaType: string): Promise<{ rating: number | null; ratingCount: number | null }> {
-  const tmdbApiKey = process.env.TMDB_API_KEY;
+export async function fetchTmdbRating(
+  tmdbId: string,
+  mediaType: string,
+  apiKey?: string
+): Promise<{ rating: number | null; ratingCount: number | null }> {
+  const tmdbApiKey = resolveTmdbApiKey(apiKey);
   if (!tmdbApiKey) {
     return { rating: null, ratingCount: null };
   }
@@ -130,9 +146,10 @@ export async function fetchTmdbRating(tmdbId: string, mediaType: string): Promis
 export async function searchTmdbByTitle(
   title: string,
   mediaType: string,
-  year: number | null
+  year: number | null,
+  apiKey?: string
 ): Promise<string | null> {
-  const tmdbApiKey = process.env.TMDB_API_KEY;
+  const tmdbApiKey = resolveTmdbApiKey(apiKey);
   if (!tmdbApiKey) {
     console.warn('TMDB_API_KEY not configured, cannot search by title');
     return null;

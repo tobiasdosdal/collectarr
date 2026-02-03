@@ -17,6 +17,18 @@ import { NetworkError } from './modules/shared/errors.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const SENSITIVE_HEADERS = new Set(['authorization', 'cookie', 'set-cookie', 'x-acdb-key']);
+
+function redactHeaders(headers: FastifyRequest['headers']): Record<string, unknown> {
+  const redacted: Record<string, unknown> = { ...headers };
+  for (const key of Object.keys(redacted)) {
+    if (SENSITIVE_HEADERS.has(key.toLowerCase())) {
+      redacted[key] = '[redacted]';
+    }
+  }
+  return redacted;
+}
+
 // Module routes
 import authRoutes from './modules/auth/routes.js';
 import usersRoutes from './modules/users/routes.js';
@@ -99,10 +111,7 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
       fastify.log.debug({
         method: request.method,
         url: request.url,
-        headers: request.headers,
-        body: request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH'
-          ? request.body
-          : undefined,
+        headers: redactHeaders(request.headers),
       });
     }
   });

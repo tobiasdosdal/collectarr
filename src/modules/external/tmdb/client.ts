@@ -179,11 +179,12 @@ class TMDbClient {
   }
 }
 
-export function createTMDbClient(config: AppConfig): TMDbClient | null {
-  if (!config?.external?.tmdb?.apiKey) {
+export function createTMDbClient(config: AppConfig, apiKeyOverride?: string): TMDbClient | null {
+  const apiKey = apiKeyOverride || config?.external?.tmdb?.apiKey;
+  if (!apiKey) {
     return null;
   }
-  return new TMDbClient(config.external.tmdb.apiKey, config.external.tmdb.baseUrl);
+  return new TMDbClient(apiKey, config.external.tmdb.baseUrl);
 }
 
 export default TMDbClient;

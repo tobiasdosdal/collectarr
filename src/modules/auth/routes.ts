@@ -115,7 +115,8 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
   fastify.post('/login', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      fastify.log.debug({ body: request.body }, 'Login attempt');
+      const body = request.body as { email?: string } | undefined;
+      fastify.log.debug({ email: body?.email }, 'Login attempt');
 
       const validation = loginSchema.safeParse(request.body);
       if (!validation.success) {

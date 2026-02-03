@@ -46,6 +46,17 @@ export class ItemEnrichmentJob {
     const { itemId, imdbId, tmdbId, mediaType } = data;
 
     try {
+      const settings = await prisma.settings.findUnique({
+        where: { id: 'singleton' },
+        select: {
+          mdblistApiKey: true,
+          tmdbApiKey: true,
+        },
+      });
+
+      const mdblistApiKey = settings?.mdblistApiKey || config.external.mdblist.apiKey;
+      const tmdbApiKey = settings?.tmdbApiKey || config.external.tmdb.apiKey;
+
       const item = await prisma.collectionItem.findUnique({
         where: { id: itemId },
       });
@@ -60,7 +71,7 @@ export class ItemEnrichmentJob {
 
       if (imdbId) {
         try {
-          const mdblistData = await ItemEnrichmentJob.fetchMDBListData(imdbId, config);
+          const mdblistData = await ItemEnrichmentJob.fetchMDBListData(imdbId, mdblistApiKey);
           if (mdblistData) {
             Object.assign(updateData, mdblistData);
           }
@@ -71,7 +82,7 @@ export class ItemEnrichmentJob {
 
       if (tmdbId && (!updateData.posterPath || !updateData.backdropPath)) {
         try {
-          const tmdbData = await ItemEnrichmentJob.fetchTMDBData(tmdbId, mediaType);
+          const tmdbData = await ItemEnrichmentJob.fetchTMDBData(tmdbId, mediaType, tmdbApiKey);
           Object.assign(updateData, tmdbData);
         } catch (error) {
           console.warn(`TMDB enrichment failed for item ${itemId}:`, (error as Error).message);
@@ -135,9 +146,8 @@ export class ItemEnrichmentJob {
 
   private static async fetchMDBListData(
     imdbId: string,
-    config: AppConfig
+    apiKey: string | undefined
   ): Promise<Record<string, unknown> | null> {
-    const apiKey = config.external.mdblist.apiKey;
     if (!apiKey) {
       return null;
     }
@@ -199,26 +209,27 @@ export class ItemEnrichmentJob {
 
   private static async fetchTMDBData(
     tmdbId: string,
-    mediaType: string
+    mediaType: string,
+    apiKey: string | undefined
   ): Promise<Record<string, unknown>> {
     const enrichedData: Record<string, unknown> = {};
 
     const poster = await ItemEnrichmentJob.fetchWithDelay(() =>
-      fetchTmdbPoster(tmdbId, mediaType)
+      fetchTmdbPoster(tmdbId, mediaType, apiKey)
     );
     if (poster) {
       enrichedData.posterPath = poster;
     }
 
     const backdrop = await ItemEnrichmentJob.fetchWithDelay(() =>
-      fetchTmdbBackdrop(tmdbId, mediaType)
+      fetchTmdbBackdrop(tmdbId, mediaType, apiKey)
     );
     if (backdrop) {
       enrichedData.backdropPath = backdrop;
     }
 
     const ratingData = await ItemEnrichmentJob.fetchWithDelay(() =>
-      fetchTmdbRating(tmdbId, mediaType)
+      fetchTmdbRating(tmdbId, mediaType, apiKey)
     );
     if (ratingData.rating !== null) {
       enrichedData.rating = ratingData.rating;

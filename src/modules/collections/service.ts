@@ -41,6 +41,7 @@ export class CollectionService {
       where: { id: 'singleton' },
     });
     const mdblistApiKey = settings?.mdblistApiKey || this.config.external.mdblist.apiKey;
+    const tmdbApiKey = settings?.tmdbApiKey || this.config.external.tmdb.apiKey;
 
     let totalItems = 0;
 
@@ -48,7 +49,8 @@ export class CollectionService {
       totalItems = await this.refreshMdblistProgressive(
         collectionId,
         sourceId!,
-        mdblistApiKey
+        mdblistApiKey,
+        tmdbApiKey
       );
     } else if (['TRAKT_LIST', 'TRAKT_WATCHLIST', 'TRAKT_COLLECTION'].includes(sourceType)) {
       const collection = await this.prisma.collection.findUnique({
@@ -56,14 +58,60 @@ export class CollectionService {
       });
       if (collection) {
         const items = await refreshFromTrakt(collection, settings, this.config);
-        if (items.length > 0) {
-          await this.prisma.collectionItem.createMany({
-            data: items.map((item) => ({
-              collectionId,
-              ...item,
-            })),
+        const seenTmdbIds = new Set<string>();
+        const dedupedItems = items.filter((item) => {
+          if (item.tmdbId) {
+            if (seenTmdbIds.has(item.tmdbId)) {
+              return false;
+            }
+            seenTmdbIds.add(item.tmdbId);
+          }
+          return true;
+        });
+
+        if (dedupedItems.length === 0) {
+          await this.prisma.collectionItem.deleteMany({
+            where: { collectionId },
           });
-          totalItems = items.length;
+          totalItems = 0;
+        } else {
+          const existingItems = await this.prisma.collectionItem.findMany({
+            where: { collectionId },
+            select: {
+              imdbId: true,
+              tmdbId: true,
+              tvdbId: true,
+              inEmby: true,
+              embyItemId: true,
+            },
+          });
+
+          const existingByImdb = new Map(existingItems.filter(item => item.imdbId).map(item => [item.imdbId!, item]));
+          const existingByTmdb = new Map(existingItems.filter(item => item.tmdbId).map(item => [item.tmdbId!, item]));
+          const existingByTvdb = new Map(existingItems.filter(item => item.tvdbId).map(item => [item.tvdbId!, item]));
+
+          await this.prisma.$transaction([
+            this.prisma.collectionItem.deleteMany({
+              where: { collectionId },
+            }),
+            this.prisma.collectionItem.createMany({
+              data: dedupedItems.map((item) => {
+                const existingByImdbItem = item.imdbId ? existingByImdb.get(item.imdbId) : undefined;
+                const existingByTmdbItem = item.tmdbId ? existingByTmdb.get(item.tmdbId) : undefined;
+                const existingByTvdbItem = item.tvdbId ? existingByTvdb.get(item.tvdbId) : undefined;
+                const existing = existingByImdbItem || existingByTmdbItem || existingByTvdbItem;
+
+                return {
+                  collectionId,
+                  ...item,
+                  inEmby: existing?.inEmby ?? false,
+                  embyItemId: existing?.embyItemId ?? null,
+                };
+              }),
+            }),
+          ]);
+
+          totalItems = dedupedItems.length;
         }
       }
     }
@@ -91,7 +139,8 @@ export class CollectionService {
   private async refreshMdblistProgressive(
     collectionId: string,
     listId: string,
-    apiKey: string | undefined
+    apiKey: string | undefined,
+    tmdbApiKey: string | undefined
   ): Promise<number> {
     if (!apiKey) {
       throw new Error('MDBList API key not configured');
@@ -100,10 +149,11 @@ export class CollectionService {
     try {
       this.log.info(`MDBList: Starting optimized refresh for collection ${collectionId}`);
       
-      const enrichedItems = await refreshFromMdblist(listId, apiKey, this.config);
+      const enrichedItems = await refreshFromMdblist(listId, apiKey, this.config, tmdbApiKey);
       
       if (enrichedItems.length === 0) {
         this.log.warn(`MDBList: No items found for list ${listId}`);
+        await this.removeStaleItems(collectionId, enrichedItems);
         return 0;
       }
 
@@ -208,6 +258,11 @@ export class CollectionService {
         }
       }
       
+      const removedCount = await this.removeStaleItems(collectionId, enrichedItems);
+      if (removedCount > 0) {
+        this.log.info(`MDBList: Removed ${removedCount} stale items from collection ${collectionId}`);
+      }
+
       return addedCount;
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('fetch')) {
@@ -217,6 +272,65 @@ export class CollectionService {
       }
       throw error;
     }
+  }
+
+  private async removeStaleItems(collectionId: string, refreshedItems: RefreshedItem[]): Promise<number> {
+    const tmdbIds = new Set<string>();
+    const imdbIds = new Set<string>();
+    const tvdbIds = new Set<string>();
+
+    for (const item of refreshedItems) {
+      if (item.tmdbId) tmdbIds.add(item.tmdbId);
+      if (item.imdbId) imdbIds.add(item.imdbId);
+      if (item.tvdbId) tvdbIds.add(item.tvdbId);
+    }
+
+    const existingItems = await this.prisma.collectionItem.findMany({
+      where: { collectionId },
+      select: {
+        id: true,
+        tmdbId: true,
+        imdbId: true,
+        tvdbId: true,
+      },
+    });
+
+    const toDelete: string[] = [];
+    for (const item of existingItems) {
+      if (item.tmdbId) {
+        if (!tmdbIds.has(item.tmdbId)) {
+          toDelete.push(item.id);
+        }
+        continue;
+      }
+
+      if (item.imdbId) {
+        if (!imdbIds.has(item.imdbId)) {
+          toDelete.push(item.id);
+        }
+        continue;
+      }
+
+      if (item.tvdbId && !tvdbIds.has(item.tvdbId)) {
+        toDelete.push(item.id);
+      }
+    }
+
+    if (toDelete.length === 0) {
+      return 0;
+    }
+
+    const chunkSize = 200;
+    let deleted = 0;
+    for (let i = 0; i < toDelete.length; i += chunkSize) {
+      const chunk = toDelete.slice(i, i + chunkSize);
+      const result = await this.prisma.collectionItem.deleteMany({
+        where: { id: { in: chunk } },
+      });
+      deleted += result.count;
+    }
+
+    return deleted;
   }
 }
 

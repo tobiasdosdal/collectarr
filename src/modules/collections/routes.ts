@@ -293,7 +293,16 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       return reply.code(404).send({ error: 'Not Found', message: 'Collection not found' });
     }
 
-    await fastify.prisma.collectionItem.delete({ where: { id: request.params.itemId, collectionId: request.params.id } });
+    const result = await fastify.prisma.collectionItem.deleteMany({
+      where: {
+        id: request.params.itemId,
+        collectionId: request.params.id,
+      },
+    });
+
+    if (result.count === 0) {
+      return reply.code(404).send({ error: 'Not Found', message: 'Item not found' });
+    }
     return reply.code(204).send();
   });
 

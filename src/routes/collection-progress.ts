@@ -154,16 +154,15 @@ export default async function collectionProgressRoutes(instance: FastifyInstance
         }
       }, 30000);
 
-      request.raw.on('close', () => {
-        clearInterval(heartbeatInterval);
-        collectionConnections.delete(reply);
-        if (collectionConnections.size === 0) {
-          connections.delete(collectionId);
-        }
-      });
-
-      await new Promise(() => {
-        // Keep connection open until client disconnects
+      await new Promise<void>((resolve) => {
+        request.raw.on('close', () => {
+          clearInterval(heartbeatInterval);
+          collectionConnections.delete(reply);
+          if (collectionConnections.size === 0) {
+            connections.delete(collectionId);
+          }
+          resolve();
+        });
       });
     }
   );

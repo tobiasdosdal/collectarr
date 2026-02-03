@@ -6,6 +6,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { createTraktClient } from './client.js';
 import type TraktClient from './client.js';
+import { ensureValidTraktTokens } from '../../../utils/trakt-auth.js';
 
 interface ListParams {
   listId: string;
@@ -48,21 +49,25 @@ export default async function traktRoutes(fastify: FastifyInstance): Promise<voi
     let accessToken: string | undefined;
 
     if (requireAuth) {
-      const settings = await fastify.prisma.settings.findUnique({
-        where: { id: 'singleton' },
-        select: { traktAccessToken: true, traktExpiresAt: true },
-      });
-
-      if (!settings?.traktAccessToken) {
-        reply.code(400).send({
-          error: 'Bad Request',
-          message: 'Trakt account not connected. Please authorize in settings.',
+      try {
+        accessToken = await ensureValidTraktTokens(fastify.prisma, fastify.config);
+      } catch (error) {
+        const err = error as Error & { code?: string };
+        if (err.code === 'NETWORK_ERROR') {
+          reply.code(502).send({
+            error: 'Network Error',
+            message: err.message || 'Failed to connect to Trakt API',
+          });
+          return null;
+        }
+        const message = err.message || 'Failed to authenticate with Trakt';
+        const status = message.includes('not connected') ? 400 : 401;
+        reply.code(status).send({
+          error: status === 400 ? 'Bad Request' : 'Unauthorized',
+          message,
         });
         return null;
       }
-
-      // TODO: Check expiration and refresh if needed
-      accessToken = settings.traktAccessToken;
     }
 
     return createTraktClient(trakt.clientId, accessToken, trakt.baseUrl);
