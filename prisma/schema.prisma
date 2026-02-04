@@ -21,6 +21,7 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   syncLogs SyncLog[]
+  auditLogs AuditLog[]
 
   @@index([apiKey])
   @@index([isAdmin])
@@ -46,6 +47,7 @@ model Collection {
   sourceUrl      String?
   posterPath     String?
   isEnabled      Boolean   @default(true)
+  autoDownload  Boolean   @default(false)
   lastSyncAt     DateTime?
   lastItemAddedAt DateTime?
   createdAt      DateTime  @default(now())
@@ -56,6 +58,9 @@ model Collection {
   embyServers  CollectionEmbyServer[]
 
   @@unique([sourceType, sourceId])
+  @@index([sourceType])
+  @@index([isEnabled])
+  @@index([isEnabled, sourceType])
 }
 
 model CollectionItem {
@@ -142,6 +147,24 @@ model SyncLog {
   @@index([userId, startedAt])
   @@index([startedAt])
   @@index([status, startedAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([entity, createdAt])
 }
 
 model RadarrServer {
