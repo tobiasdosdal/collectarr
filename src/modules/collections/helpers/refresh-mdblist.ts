@@ -317,10 +317,14 @@ async function fetchMdblistItemDetailsOptimized(
 
     // Cache images
     if (result.posterPath) {
-      cacheImage(result.posterPath).catch(() => {});
+      cacheImage(result.posterPath).catch(err => {
+        log.debug('Failed to cache poster image', { url: result.posterPath, error: (err as Error).message });
+      });
     }
     if (result.backdropPath) {
-      cacheImage(result.backdropPath).catch(() => {});
+      cacheImage(result.backdropPath).catch(err => {
+        log.debug('Failed to cache backdrop image', { url: result.backdropPath, error: (err as Error).message });
+      });
     }
 
     return result;

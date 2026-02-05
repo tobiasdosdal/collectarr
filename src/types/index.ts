@@ -24,6 +24,9 @@ export interface AppConfig {
     secret: string;
     expiresIn: string;
   };
+  encryption: {
+    key: string;
+  };
   external: {
     mdblist: {
       apiKey: string | undefined;

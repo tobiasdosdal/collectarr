@@ -343,14 +343,14 @@ const TraktBrowser: FC = () => {
             </Button>
           </div>
 
-          {items.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              Your watchlist is empty
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {items.slice(0, 20).map((item, i) => (
-                <div key={i} className="flex items-center justify-between px-4 py-3 hover:bg-secondary/30 transition-colors">
+           {items.length === 0 ? (
+             <div className="text-center py-12 text-muted-foreground">
+               Your watchlist is empty
+             </div>
+           ) : (
+             <div className="divide-y divide-border">
+               {items.slice(0, 20).map((item) => (
+                 <div key={`${item.title}-${item.year}-${item.mediaType}`} className="flex items-center justify-between px-4 py-3 hover:bg-secondary/30 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center">
                       <Film size={14} className="text-muted-foreground" />

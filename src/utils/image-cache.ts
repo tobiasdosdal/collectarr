@@ -209,7 +209,11 @@ async function queueImageForCaching(url: string): Promise<boolean> {
     if (isValid) {
       return false;
     } else {
-      await fs.unlink(filepath).catch(() => {});
+      await fs.unlink(filepath).catch((err: NodeJS.ErrnoException) => {
+        if (err.code !== 'ENOENT') {
+          log.warn('Failed to remove file', { error: err.message });
+        }
+      });
     }
   } catch {
     // File doesn't exist
@@ -481,35 +485,43 @@ export async function isCached(url: string): Promise<boolean> {
   await ensureCacheDir();
   const filename = getCacheFilename(url);
   const filepath = path.join(CACHE_DIR, filename);
-  try {
-    await fs.access(filepath);
-    const isValid = await validateImageFile(filepath);
-    if (!isValid) {
-      await fs.unlink(filepath).catch(() => {});
-      return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
+   try {
+     await fs.access(filepath);
+     const isValid = await validateImageFile(filepath);
+     if (!isValid) {
+       await fs.unlink(filepath).catch((err: NodeJS.ErrnoException) => {
+         if (err.code !== 'ENOENT') {
+           log.warn('Failed to remove file', { error: err.message });
+         }
+       });
+       return false;
+     }
+     return true;
+   } catch {
+     return false;
+   }
+ }
 
 export async function getCachedPath(url: string): Promise<string | null> {
   if (!url) return null;
   const filename = getCacheFilename(url);
   const filepath = path.join(CACHE_DIR, filename);
-  try {
-    await fs.access(filepath);
-    const isValid = await validateImageFile(filepath);
-    if (!isValid) {
-      await fs.unlink(filepath).catch(() => {});
-      return null;
-    }
-    return filepath;
-  } catch {
-    return null;
-  }
-}
+   try {
+     await fs.access(filepath);
+     const isValid = await validateImageFile(filepath);
+     if (!isValid) {
+       await fs.unlink(filepath).catch((err: NodeJS.ErrnoException) => {
+         if (err.code !== 'ENOENT') {
+           log.warn('Failed to remove file', { error: err.message });
+         }
+       });
+       return null;
+     }
+     return filepath;
+   } catch {
+     return null;
+   }
+ }
 
 export async function cacheImage(url: string, retryCount = 0): Promise<string | null> {
   if (!url) return null;
@@ -521,17 +533,21 @@ export async function cacheImage(url: string, retryCount = 0): Promise<string | 
   try {
     await fs.access(filepath);
     const isValid = await validateImageFile(filepath);
-    if (isValid) {
-      const metadata = await getMetadata(filename);
-      await saveMetadata(filename, {
-        ...metadata,
-        accessCount: (metadata?.accessCount || 0) + 1,
-        lastAccess: new Date().toISOString(),
-      });
-      return filename;
-    } else {
-      await fs.unlink(filepath).catch(() => {});
-    }
+     if (isValid) {
+       const metadata = await getMetadata(filename);
+       await saveMetadata(filename, {
+         ...metadata,
+         accessCount: (metadata?.accessCount || 0) + 1,
+         lastAccess: new Date().toISOString(),
+       });
+       return filename;
+     } else {
+       await fs.unlink(filepath).catch((err: NodeJS.ErrnoException) => {
+         if (err.code !== 'ENOENT') {
+           log.warn('Failed to remove file', { error: err.message });
+         }
+       });
+     }
   } catch {
     // Not cached, download it
   }
@@ -588,20 +604,28 @@ export async function cacheImage(url: string, retryCount = 0): Promise<string | 
     const tempPath = `${filepath}.${uniqueSuffix}.tmp`;
     await fs.writeFile(tempPath, buffer);
 
-    const isValid = await validateImageFile(tempPath);
-    if (!isValid) {
-      await fs.unlink(tempPath).catch(() => {});
-      log.warn('Downloaded image failed validation', { url });
-      return null;
-    }
+     const isValid = await validateImageFile(tempPath);
+     if (!isValid) {
+       await fs.unlink(tempPath).catch((err: NodeJS.ErrnoException) => {
+         if (err.code !== 'ENOENT') {
+           log.warn('Failed to remove file', { error: err.message });
+         }
+       });
+       log.warn('Downloaded image failed validation', { url });
+       return null;
+     }
 
-    try {
-      await fs.rename(tempPath, filepath);
-    } catch (renameError) {
-      // If rename fails, try to clean up temp file
-      await fs.unlink(tempPath).catch(() => {});
-      throw renameError;
-    }
+     try {
+       await fs.rename(tempPath, filepath);
+     } catch (renameError) {
+       // If rename fails, try to clean up temp file
+       await fs.unlink(tempPath).catch((err: NodeJS.ErrnoException) => {
+         if (err.code !== 'ENOENT') {
+           log.warn('Failed to remove file', { error: err.message });
+         }
+       });
+       throw renameError;
+     }
 
     await saveMetadata(filename, {
       url,
@@ -644,26 +668,30 @@ export async function getCachedImage(filename: string): Promise<Buffer | null> {
     return null;
   }
 
-  const filepath = path.join(CACHE_DIR, filename);
-  try {
-    const isValid = await validateImageFile(filepath);
-    if (!isValid) {
-      await fs.unlink(filepath).catch(() => {});
-      return null;
-    }
+   const filepath = path.join(CACHE_DIR, filename);
+   try {
+     const isValid = await validateImageFile(filepath);
+     if (!isValid) {
+       await fs.unlink(filepath).catch((err: NodeJS.ErrnoException) => {
+         if (err.code !== 'ENOENT') {
+           log.warn('Failed to remove file', { error: err.message });
+         }
+       });
+       return null;
+     }
 
-    const metadata = await getMetadata(filename);
-    saveMetadata(filename, {
-      ...metadata,
-      accessCount: (metadata?.accessCount || 0) + 1,
-      lastAccess: new Date().toISOString(),
-    }).catch(err => log.warn('Failed to update cache metadata', { filename, error: (err as Error).message }));
+     const metadata = await getMetadata(filename);
+     saveMetadata(filename, {
+       ...metadata,
+       accessCount: (metadata?.accessCount || 0) + 1,
+       lastAccess: new Date().toISOString(),
+     }).catch(err => log.warn('Failed to update cache metadata', { filename, error: (err as Error).message }));
 
-    return await fs.readFile(filepath);
-  } catch {
-    return null;
-  }
-}
+     return await fs.readFile(filepath);
+   } catch {
+     return null;
+   }
+ }
 
 export async function getCachedImageWithStats(filename: string): Promise<CachedImageWithStats | null> {
   if (!validateFilename(filename)) {
@@ -671,36 +699,40 @@ export async function getCachedImageWithStats(filename: string): Promise<CachedI
     return null;
   }
 
-  const filepath = path.join(CACHE_DIR, filename);
-  try {
-    const isValid = await validateImageFile(filepath);
-    if (!isValid) {
-      await fs.unlink(filepath).catch(() => {});
-      return null;
-    }
+   const filepath = path.join(CACHE_DIR, filename);
+   try {
+     const isValid = await validateImageFile(filepath);
+     if (!isValid) {
+       await fs.unlink(filepath).catch((err: NodeJS.ErrnoException) => {
+         if (err.code !== 'ENOENT') {
+           log.warn('Failed to remove file', { error: err.message });
+         }
+       });
+       return null;
+     }
 
-    const [buffer, stats] = await Promise.all([
-      fs.readFile(filepath),
-      fs.stat(filepath),
-    ]);
+     const [buffer, stats] = await Promise.all([
+       fs.readFile(filepath),
+       fs.stat(filepath),
+     ]);
 
-    const metadata = await getMetadata(filename);
-    saveMetadata(filename, {
-      ...metadata,
-      accessCount: (metadata?.accessCount || 0) + 1,
-      lastAccess: new Date().toISOString(),
-    }).catch(err => log.warn('Failed to update cache metadata', { filename, error: (err as Error).message }));
+     const metadata = await getMetadata(filename);
+     saveMetadata(filename, {
+       ...metadata,
+       accessCount: (metadata?.accessCount || 0) + 1,
+       lastAccess: new Date().toISOString(),
+     }).catch(err => log.warn('Failed to update cache metadata', { filename, error: (err as Error).message }));
 
-    return {
-      buffer,
-      stats,
-      etag: generateETag(stats),
-      lastModified: stats.mtime.toUTCString(),
-    };
-  } catch {
-    return null;
-  }
-}
+     return {
+       buffer,
+       stats,
+       etag: generateETag(stats),
+       lastModified: stats.mtime.toUTCString(),
+     };
+   } catch {
+     return null;
+   }
+ }
 
 export async function clearOldCache(maxAgeDays = 30): Promise<number> {
   await ensureCacheDir();
@@ -781,16 +813,20 @@ export async function getCachedImageUrl(tmdbUrl: string): Promise<string> {
   const cachedFilename = getFilenameFromCachedUrl(tmdbUrl);
   if (cachedFilename) {
     const cachedPath = path.join(CACHE_DIR, cachedFilename);
-    try {
-      await fs.access(cachedPath);
-      const isValid = await validateImageFile(cachedPath);
-      if (isValid) {
-        return tmdbUrl;
-      }
-      await fs.unlink(cachedPath).catch(() => {});
-    } catch {
-      // File doesn't exist
-    }
+     try {
+       await fs.access(cachedPath);
+       const isValid = await validateImageFile(cachedPath);
+       if (isValid) {
+         return tmdbUrl;
+       }
+       await fs.unlink(cachedPath).catch((err: NodeJS.ErrnoException) => {
+         if (err.code !== 'ENOENT') {
+           log.warn('Failed to remove file', { error: err.message });
+         }
+       });
+     } catch {
+       // File doesn't exist
+     }
 
     const metadata = await getMetadata(cachedFilename);
     if (metadata?.url && metadata.url.startsWith('https://image.tmdb.org/')) {
@@ -815,21 +851,27 @@ export async function getCachedImageUrl(tmdbUrl: string): Promise<string> {
     await fs.access(filepath);
     const isValid = await validateImageFile(filepath);
     if (isValid) {
-      const metadata = await getMetadata(filename);
-      saveMetadata(filename, {
-        ...metadata,
-        url: tmdbUrl,
-        accessCount: (metadata?.accessCount || 0) + 1,
-        lastAccess: new Date().toISOString(),
-      }).catch(() => {});
+       const metadata = await getMetadata(filename);
+       saveMetadata(filename, {
+         ...metadata,
+         url: tmdbUrl,
+         accessCount: (metadata?.accessCount || 0) + 1,
+         lastAccess: new Date().toISOString(),
+       }).catch(err => {
+         log.debug('Failed to save metadata', { error: (err as Error).message });
+       });
 
-      return `/api/v1/images/cache/${filename}`;
-    } else {
-      await fs.unlink(filepath).catch(() => {});
-    }
-  } catch {
-    // File doesn't exist yet, will queue and return cache path
-  }
+       return `/api/v1/images/cache/${filename}`;
+     } else {
+       await fs.unlink(filepath).catch((err: NodeJS.ErrnoException) => {
+         if (err.code !== 'ENOENT') {
+           log.warn('Failed to remove file', { error: err.message });
+         }
+       });
+     }
+   } catch {
+     // File doesn't exist yet, will queue and return cache path
+   }
 
   // Always queue if not cached, but return the expected cache path
   // The image endpoint will handle actual caching on first request
@@ -1020,10 +1062,14 @@ export async function clearInvalidImageUrls(prisma: PrismaClient): Promise<{
         cleared += count;
       }
 
-      // Also delete the metadata file if it exists
-      const filename = getCacheFilename(url);
-      const metadataPath = path.join(METADATA_DIR, `${filename}.json`);
-      await fs.unlink(metadataPath).catch(() => {});
+       // Also delete the metadata file if it exists
+       const filename = getCacheFilename(url);
+       const metadataPath = path.join(METADATA_DIR, `${filename}.json`);
+       await fs.unlink(metadataPath).catch((err: NodeJS.ErrnoException) => {
+         if (err.code !== 'ENOENT') {
+           log.warn('Failed to remove file', { error: err.message });
+         }
+       });
     } catch (error) {
       log.error('Error clearing invalid image URL', {
         url,

@@ -167,6 +167,13 @@ export default async function settingsRoutes(fastify: FastifyInstance): Promise<
 
     const tokens = await tokenResponse.json() as TraktTokenResponse;
 
+    if (!tokens.access_token || !tokens.refresh_token || typeof tokens.expires_in !== 'number') {
+      return reply.code(502).send({
+        error: 'OAuth Error',
+        message: 'Invalid token response from Trakt API',
+      });
+    }
+
     // Store tokens in global Settings
     await fastify.prisma.settings.upsert({
       where: { id: 'singleton' },

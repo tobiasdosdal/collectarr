@@ -12,6 +12,9 @@ process.env.DISABLE_AUTH = 'false';
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   process.env.JWT_SECRET = 'test-jwt-secret-should-be-at-least-32-chars';
 }
+if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY.length < 32) {
+  process.env.ENCRYPTION_KEY = 'test-encryption-key-at-least-32-chars!';
+}
 
 /**
  * Build a test instance of the app

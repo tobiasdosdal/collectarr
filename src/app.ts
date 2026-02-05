@@ -68,7 +68,10 @@ import samplesRoutes from './modules/samples/routes.js';
 export async function buildApp(fastify: FastifyInstance): Promise<void> {
   fastify.decorate('config', config);
 
-  const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'http://localhost:3000'];
+  const allowedOrigins = process.env.CORS_ORIGINS?.split(',') ||
+    (config.server.env !== 'production'
+      ? ['http://localhost:5173', 'http://localhost:3000']
+      : []);
   await fastify.register(cors, {
     origin: allowedOrigins,
     credentials: true,
@@ -129,7 +132,7 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
       error: {
         message: error.message,
         stack: error.stack,
-        code: (error as any).code,
+        code: error.code,
         statusCode: error.statusCode,
       },
       request: {
@@ -139,7 +142,7 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
     });
 
     if (error instanceof ValidationError) {
-      const validationError = error as ValidationError;
+      const validationError = error as unknown as ValidationError;
       return reply.code(400).send({
         error: 'Validation Error',
         message: validationError.message,
@@ -184,7 +187,7 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
 
     if (
       error instanceof NetworkError ||
-      (error as any).code === 'NETWORK_ERROR' ||
+      error.code === 'NETWORK_ERROR' ||
       (error instanceof TypeError && error.message.includes('fetch'))
     ) {
       return reply.code(502).send({
@@ -193,11 +196,10 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
       });
     }
 
-    const customError = error as any;
-    if (customError.validation) {
+    if ('validation' in error && error.validation) {
       return reply.code(400).send({
         error: 'Validation Error',
-        details: customError.validation,
+        details: error.validation,
       });
     }
 
@@ -208,7 +210,7 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
       });
     }
 
-    const statusCode = error.statusCode || customError.status || 500;
+    const statusCode = error.statusCode || 500;
     return reply.code(statusCode).send({
       error: error.name || 'Internal Server Error',
       message: error.message || 'An unexpected error occurred',

@@ -12,7 +12,6 @@ export const config: AppConfig = {
   jwt: {
     secret: (() => {
       const secret = process.env.JWT_SECRET;
-      // Skip validation if auth is disabled
       if (process.env.DISABLE_AUTH === 'true') {
         return secret || 'not-used-when-auth-disabled';
       }
@@ -25,6 +24,21 @@ export const config: AppConfig = {
       return secret;
     })(),
     expiresIn: '7d',
+  },
+  encryption: {
+    key: (() => {
+      const key = process.env.ENCRYPTION_KEY;
+      if (process.env.DISABLE_AUTH === 'true') {
+        return key || 'not-used-when-auth-disabled-padding';
+      }
+      if (!key) {
+        throw new Error('ENCRYPTION_KEY environment variable is required');
+      }
+      if (key.length < 32) {
+        throw new Error('ENCRYPTION_KEY must be at least 32 characters');
+      }
+      return key;
+    })(),
   },
   external: {
     mdblist: {

@@ -249,10 +249,18 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     const generatedPosterPath = path.join(POSTERS_DIR, `poster-${request.params.id}.png`);
     const posterExtensions = ['jpg', 'jpeg', 'png', 'webp'];
 
-    await unlink(generatedPosterPath).catch(() => {});
+    await unlink(generatedPosterPath).catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== 'ENOENT') {
+        fastify.log.warn(`Failed to remove generated poster: ${err.message}`);
+      }
+    });
 
     for (const ext of posterExtensions) {
-      await unlink(path.join(POSTERS_DIR, `${request.params.id}.${ext}`)).catch(() => {});
+      await unlink(path.join(POSTERS_DIR, `${request.params.id}.${ext}`)).catch((err: NodeJS.ErrnoException) => {
+        if (err.code !== 'ENOENT') {
+          fastify.log.warn(`Failed to remove uploaded poster: ${err.message}`);
+        }
+      });
     }
 
     await fastify.prisma.collection.delete({ where: { id: request.params.id } });

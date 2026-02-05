@@ -90,7 +90,7 @@ const Collections: FC = () => {
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   const filteredCollections = useMemo(() => {
-    let filtered = collections.filter((collection) => {
+    const filtered = collections.filter((collection) => {
       const searchLower = debouncedSearchQuery.toLowerCase().trim();
       if (searchLower) {
         const nameMatch = collection.name.toLowerCase().includes(searchLower);

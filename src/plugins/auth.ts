@@ -12,7 +12,11 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
   const authDisabled = fastify.config.auth.disabled;
 
   if (authDisabled) {
-    fastify.log.warn('Authentication is disabled via DISABLE_AUTH=true. All requests will be treated as authenticated admin.');
+    if (fastify.config.server.env === 'production') {
+      fastify.log.error('SECURITY WARNING: Authentication is disabled via DISABLE_AUTH=true in PRODUCTION. All requests will be treated as authenticated admin.');
+    } else {
+      fastify.log.warn('Authentication is disabled via DISABLE_AUTH=true. All requests will be treated as authenticated admin.');
+    }
   }
 
   await fastify.register(jwt, {

@@ -90,5 +90,8 @@ EXPOSE 7795
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:7795/health || exit 1
 
+# Run as non-root user for security
+USER node
+
 # Auto-generates secrets if not provided
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

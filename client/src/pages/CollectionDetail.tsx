@@ -174,9 +174,10 @@ const CollectionDetail: FC = () => {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState<boolean>(false);
   const [savingAutoDownload, setSavingAutoDownload] = useState<boolean>(false);
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const hasAutoStartedPolling = useRef<boolean>(false);
-  const [confirmAction, setConfirmAction] = useState<'deleteCollection' | 'deletePoster' | null>(null);
+   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+   const hasAutoStartedPolling = useRef<boolean>(false);
+   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   const [confirmAction, setConfirmAction] = useState<'deleteCollection' | 'deletePoster' | null>(null);
   const [enrichmentProgress, setEnrichmentProgress] = useState<EnrichmentProgress>({
     pending: 0,
     enriched: 0,
@@ -339,17 +340,21 @@ const CollectionDetail: FC = () => {
         });
       });
 
-      eventSource.onerror = () => {
-        setSseConnected(false);
-        eventSource.close();
-        eventSourceRef.current = null;
-        setTimeout(connectSSE, 5000);
-      };
+       eventSource.onerror = () => {
+         setSseConnected(false);
+         eventSource.close();
+         eventSourceRef.current = null;
+         reconnectTimeoutRef.current = setTimeout(connectSSE, 5000);
+       };
     };
 
     connectSSE();
 
     return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;

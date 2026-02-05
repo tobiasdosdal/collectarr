@@ -1,4 +1,4 @@
-import { useEffect, useState, createContext, useContext, ReactNode } from 'react';
+import { useEffect, useState, createContext, useContext, ReactNode, useRef } from 'react';
 import { CheckCircle, XCircle, X, Info, AlertTriangle } from 'lucide-react';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -30,15 +30,26 @@ interface ToastProviderProps {
 
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const timeoutIdsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   const addToast = (message: string, type: ToastType = 'success', duration = 3000) => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, message, type, duration }]);
 
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
+      timeoutIdsRef.current.delete(timeoutId);
     }, duration);
+    timeoutIdsRef.current.add(timeoutId);
   };
+
+  useEffect(() => {
+    const ids = timeoutIdsRef.current;
+    return () => {
+      ids.forEach(id => clearTimeout(id));
+      ids.clear();
+    };
+  }, []);
 
   return (
     <ToastContext.Provider value={{ addToast }}>
