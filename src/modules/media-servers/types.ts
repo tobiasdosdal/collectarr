@@ -10,8 +10,8 @@ export interface ServerConfig {
   // The name of the service (e.g., 'Radarr', 'Sonarr', 'Emby')
   serviceName: string;
 
-  // Prisma model name (e.g., 'radarrServer', 'sonarrServer', 'embyServer')
-  modelName: 'radarrServer' | 'sonarrServer' | 'embyServer';
+  // Prisma model name (e.g., 'radarrServer', 'sonarrServer', 'embyServer', 'jellyfinServer')
+  modelName: 'radarrServer' | 'sonarrServer' | 'embyServer' | 'jellyfinServer';
 
   // Whether the server supports quality profiles
   supportsProfiles: boolean;

@@ -51,6 +51,7 @@ import traktRoutes from './modules/external/trakt/routes.js';
 
 // Emby integration
 import embyRoutes from './modules/emby/routes.js';
+import jellyfinRoutes from './modules/jellyfin/routes.js';
 
 // Radarr/Sonarr integration
 import radarrRoutes from './modules/radarr/routes.js';
@@ -232,6 +233,7 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
     api.register(traktRoutes, { prefix: '/sources/trakt' });
 
     api.register(embyRoutes, { prefix: '/emby' });
+    api.register(jellyfinRoutes, { prefix: '/jellyfin' });
     api.register(radarrRoutes, { prefix: '/radarr' });
     api.register(sonarrRoutes, { prefix: '/sonarr' });
 

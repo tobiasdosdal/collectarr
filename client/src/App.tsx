@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './components/Toast';
+import { ReloadPrompt } from './components/ReloadPrompt';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { SettingsLayout } from './components/SettingsLayout';
@@ -16,6 +17,7 @@ import Browse from './pages/Browse';
 import SettingsGeneral from './pages/settings/SettingsGeneral';
 import SettingsAccount from './pages/settings/SettingsAccount';
 import SettingsEmby from './pages/settings/SettingsEmby';
+import SettingsJellyfin from './pages/settings/SettingsJellyfin';
 import SettingsDownloaders from './pages/settings/SettingsDownloaders';
 import SettingsUsers from './pages/settings/SettingsUsers';
 import SettingsAppearance from './pages/settings/SettingsAppearance';
@@ -141,6 +143,7 @@ function AppRoutes() {
         <Route path="account" element={<SettingsAccount />} />
         <Route path="appearance" element={<SettingsAppearance />} />
         <Route path="emby" element={<SettingsEmby />} />
+        <Route path="jellyfin" element={<SettingsJellyfin />} />
         <Route path="downloaders" element={<SettingsDownloaders />} />
         <Route path="users" element={<SettingsUsers />} />
       </Route>
@@ -161,6 +164,7 @@ function App() {
               <AuthProvider>
                 <AppRoutes />
               </AuthProvider>
+              <ReloadPrompt />
             </ToastProvider>
           </ErrorBoundary>
         </BrowserRouter>

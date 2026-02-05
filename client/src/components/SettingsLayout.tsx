@@ -41,6 +41,11 @@ const settingsNavItems: SettingsNavItem[] = [
     label: 'Emby',
   },
   {
+    path: '/settings/jellyfin',
+    icon: Server,
+    label: 'Jellyfin',
+  },
+  {
     path: '/settings/downloaders',
     icon: DownloadCloud,
     label: 'Downloaders',

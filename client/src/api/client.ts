@@ -358,14 +358,90 @@ class ApiClient {
     return this.request(url);
   }
 
-  async removeCollectionFromEmby(serverId: string, collectionName: string): Promise<any> {
-    return this.request(`/emby/servers/${serverId}/remove-collection`, {
-      method: 'POST',
-      body: JSON.stringify({ collectionName }),
-    });
-  }
+   async removeCollectionFromEmby(serverId: string, collectionName: string): Promise<any> {
+     return this.request(`/emby/servers/${serverId}/remove-collection`, {
+       method: 'POST',
+       body: JSON.stringify({ collectionName }),
+     });
+   }
 
-  // Sources - MDBList
+   // Jellyfin Servers
+   async getJellyfinServers(): Promise<any> {
+     return this.request('/jellyfin/servers');
+   }
+
+   async addJellyfinServer(data: Record<string, any>): Promise<any> {
+     return this.request('/jellyfin/servers', {
+       method: 'POST',
+       body: JSON.stringify(data),
+     });
+   }
+
+   async testJellyfinConnection(url: string, apiKey: string): Promise<any> {
+     return this.request('/jellyfin/servers/test', {
+       method: 'POST',
+       body: JSON.stringify({ url, apiKey }),
+     });
+   }
+
+   async getJellyfinServer(id: string): Promise<any> {
+     return this.request(`/jellyfin/servers/${id}`);
+   }
+
+   async updateJellyfinServer(id: string, data: Record<string, any>): Promise<any> {
+     return this.request(`/jellyfin/servers/${id}`, {
+       method: 'PATCH',
+       body: JSON.stringify(data),
+     });
+   }
+
+   async deleteJellyfinServer(id: string): Promise<any> {
+     return this.request(`/jellyfin/servers/${id}`, { method: 'DELETE' });
+   }
+
+   async getJellyfinServerLibraries(serverId: string): Promise<any> {
+     return this.request(`/jellyfin/servers/${serverId}/libraries`);
+   }
+
+   async getJellyfinServerCollections(serverId: string): Promise<any> {
+     return this.request(`/jellyfin/servers/${serverId}/collections`);
+   }
+
+   async searchJellyfinServer(serverId: string, query: Record<string, any>): Promise<any> {
+     return this.request(`/jellyfin/servers/${serverId}/search`, {
+       method: 'POST',
+       body: JSON.stringify(query),
+     });
+   }
+
+   // Jellyfin Sync
+   async syncToJellyfin(): Promise<any> {
+     return this.request('/jellyfin/sync', { method: 'POST' });
+   }
+
+   async syncCollectionToJellyfin(collectionId: string): Promise<any> {
+     return this.request(`/jellyfin/sync/collection/${collectionId}`, { method: 'POST' });
+   }
+
+   async syncToJellyfinServer(serverId: string): Promise<any> {
+     return this.request(`/jellyfin/sync/server/${serverId}`, { method: 'POST' });
+   }
+
+   async getJellyfinSyncLogs(limit = 50, collectionId?: string, jellyfinServerId?: string): Promise<any> {
+     let url = `/jellyfin/sync/logs?limit=${limit}`;
+     if (collectionId) url += `&collectionId=${collectionId}`;
+     if (jellyfinServerId) url += `&jellyfinServerId=${jellyfinServerId}`;
+     return this.request(url);
+   }
+
+   async removeCollectionFromJellyfin(serverId: string, collectionName: string): Promise<any> {
+     return this.request(`/jellyfin/servers/${serverId}/remove-collection`, {
+       method: 'POST',
+       body: JSON.stringify({ collectionName }),
+     });
+   }
+
+   // Sources - MDBList
   async searchMdblistLists(query: string): Promise<any> {
     return this.request(`/sources/mdblist/search?q=${encodeURIComponent(query)}`);
   }

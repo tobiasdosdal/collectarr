@@ -9,6 +9,7 @@ import { getCollectionScheduler, resetCollectionScheduler } from '../jobs/collec
 import { initializeJobQueue, stopJobQueue } from '../jobs/refresh-collections.js';
 import refreshCollectionsJob from '../jobs/refresh-collections.js';
 import { syncAllToEmby } from '../jobs/sync-to-emby.js';
+import { syncToJellyfinJob } from '../jobs/sync-to-jellyfin.js';
 import cacheCleanupJob from '../jobs/cache-cleanup.js';
 import imageCacheQueueJob from '../jobs/image-cache-queue.js';
 import { stopCacheQueue } from '../utils/image-cache.js';
@@ -61,6 +62,16 @@ async function jobsPlugin(fastify: FastifyInstance): Promise<void> {
     'sync-to-emby',
     '0 */2 * * *',
     async (app) => syncAllToEmby(app.prisma, app.log),
+    {
+      enabled: true,
+      runOnStart: false,
+    }
+  );
+
+  scheduler.register(
+    'sync-to-jellyfin',
+    '15 */2 * * *',
+    syncToJellyfinJob,
     {
       enabled: true,
       runOnStart: false,

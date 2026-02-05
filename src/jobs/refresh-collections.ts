@@ -6,6 +6,7 @@
 import { createMDBListClient } from '../modules/external/mdblist/client.js';
 import { createTraktClient } from '../modules/external/trakt/client.js';
 import { syncCollections } from '../modules/emby/sync-service.js';
+import { syncAllToJellyfin } from '../modules/jellyfin/sync-service.js';
 import { ensureValidTraktTokens } from '../utils/trakt-auth.js';
 import { withRetry } from '../utils/retry.js';
 import { cacheImage } from '../utils/image-cache.js';
@@ -312,6 +313,12 @@ async function refreshCollection(fastify: FastifyInstance, collection: Refreshab
     collectionId: collection.id,
     logger: log,
   });
+
+  try {
+    await syncAllToJellyfin(prisma, log);
+  } catch (error) {
+    log.warn(`Jellyfin sync failed after refresh: ${(error as Error).message}`);
+  }
 
   if (collection.autoDownload) {
     autoDownloadCollectionItems(prisma, config, collection.id).catch((error) => {

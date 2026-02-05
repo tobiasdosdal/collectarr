@@ -53,9 +53,10 @@ model Collection {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  items        CollectionItem[]
-  syncLogs     SyncLog[]
-  embyServers  CollectionEmbyServer[]
+  items            CollectionItem[]
+  syncLogs         SyncLog[]
+  embyServers      CollectionEmbyServer[]
+  jellyfinServers  CollectionJellyfinServer[]
 
   @@unique([sourceType, sourceId])
   @@index([sourceType])
@@ -77,9 +78,11 @@ model CollectionItem {
   backdropPath String?
   rating       Float?
   ratingCount  Int?
-  inEmby       Boolean  @default(false)
-  embyItemId   String?
-  addedAt      DateTime @default(now())
+  inEmby         Boolean  @default(false)
+  embyItemId     String?
+  inJellyfin     Boolean  @default(false)
+  jellyfinItemId String?
+  addedAt        DateTime @default(now())
   enrichmentStatus String @default("PENDING")
   enrichmentAttempts Int @default(0)
   lastEnrichmentError String?
@@ -93,6 +96,8 @@ model CollectionItem {
   @@index([tvdbId])
   @@index([inEmby])
   @@index([collectionId, inEmby])
+  @@index([inJellyfin])
+  @@index([collectionId, inJellyfin])
   @@index([collectionId, addedAt])
   @@index([tmdbId, imdbId])
   @@index([enrichmentStatus])
@@ -126,23 +131,53 @@ model CollectionEmbyServer {
   @@index([embyServerId])
 }
 
-model SyncLog {
-  id           String    @id @default(uuid())
-  userId       String?
-  embyServerId String?
-  collectionId String?
-  status       String
-  itemsTotal   Int       @default(0)
-  itemsMatched Int       @default(0)
-  itemsFailed  Int       @default(0)
-  errorMessage String?
-  details      String?
-  startedAt    DateTime  @default(now())
-  completedAt  DateTime?
+model JellyfinServer {
+  id        String   @id @default(uuid())
+  name      String
+  url       String   @unique
+  apiKey    String
+  apiKeyIv  String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  embyServer EmbyServer? @relation(fields: [embyServerId], references: [id], onDelete: Cascade)
-  collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  syncLogs    SyncLog[]
+  collections CollectionJellyfinServer[]
+
+  @@index([isDefault])
+}
+
+model CollectionJellyfinServer {
+  collectionId     String
+  jellyfinServerId String
+  createdAt        DateTime @default(now())
+
+  collection     Collection     @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  jellyfinServer JellyfinServer @relation(fields: [jellyfinServerId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, jellyfinServerId])
+  @@index([jellyfinServerId])
+}
+
+model SyncLog {
+  id               String    @id @default(uuid())
+  userId           String?
+  embyServerId     String?
+  jellyfinServerId String?
+  collectionId     String?
+  status           String
+  itemsTotal       Int       @default(0)
+  itemsMatched     Int       @default(0)
+  itemsFailed      Int       @default(0)
+  errorMessage     String?
+  details          String?
+  startedAt        DateTime  @default(now())
+  completedAt      DateTime?
+
+  user           User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  embyServer     EmbyServer?     @relation(fields: [embyServerId], references: [id], onDelete: Cascade)
+  jellyfinServer JellyfinServer? @relation(fields: [jellyfinServerId], references: [id], onDelete: Cascade)
+  collection     Collection?     @relation(fields: [collectionId], references: [id], onDelete: SetNull)
 
   @@index([userId, startedAt])
   @@index([startedAt])
