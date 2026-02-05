@@ -3,7 +3,6 @@
  * Business logic for collection management
  */
 
-import fs from 'fs/promises';
 import type { FastifyInstance, FastifyBaseLogger } from 'fastify';
 import type { PrismaClient } from '@prisma/client';
 import type { AppConfig, RefreshedItem, MDBListItem } from '../../types/index.js';
@@ -13,17 +12,11 @@ import { refreshFromMdblist } from './helpers/refresh-mdblist.js';
 import { refreshFromTrakt } from './helpers/refresh-trakt.js';
 import { generateCollectionPoster } from '../../utils/collection-poster.js';
 import { getPostersDir } from '../../utils/paths.js';
+import { ensureValidTraktTokens } from '../../utils/trakt-auth.js';
+import { hasUploadedPoster } from '../../utils/poster-utils.js';
+import { autoDownloadCollectionItems } from '../downloaders/auto-download.js';
 
 const POSTERS_DIR = getPostersDir();
-
-async function hasUploadedPoster(collectionId: string): Promise<boolean> {
-  try {
-    const files = await fs.readdir(POSTERS_DIR);
-    return files.some((file) => file.startsWith(collectionId));
-  } catch {
-    return false;
-  }
-}
 
 export interface CollectionServiceOptions {
   prisma: PrismaClient;
@@ -70,7 +63,8 @@ export class CollectionService {
         where: { id: collectionId },
       });
       if (collection) {
-        const items = await refreshFromTrakt(collection, settings, this.config);
+        const accessToken = await ensureValidTraktTokens(this.prisma, this.config);
+        const items = await refreshFromTrakt(collection, accessToken, this.config);
         const seenTmdbIds = new Set<string>();
         const dedupedItems = items.filter((item) => {
           if (item.tmdbId) {
@@ -103,26 +97,55 @@ export class CollectionService {
           const existingByTmdb = new Map(existingItems.filter(item => item.tmdbId).map(item => [item.tmdbId!, item]));
           const existingByTvdb = new Map(existingItems.filter(item => item.tvdbId).map(item => [item.tvdbId!, item]));
 
-          await this.prisma.$transaction([
-            this.prisma.collectionItem.deleteMany({
-              where: { collectionId },
-            }),
-            this.prisma.collectionItem.createMany({
-              data: dedupedItems.map((item) => {
-                const existingByImdbItem = item.imdbId ? existingByImdb.get(item.imdbId) : undefined;
-                const existingByTmdbItem = item.tmdbId ? existingByTmdb.get(item.tmdbId) : undefined;
-                const existingByTvdbItem = item.tvdbId ? existingByTvdb.get(item.tvdbId) : undefined;
-                const existing = existingByImdbItem || existingByTmdbItem || existingByTvdbItem;
+          // Upsert items to preserve existing data during refresh (prevents empty state)
+          for (const item of dedupedItems) {
+            const existingByImdbItem = item.imdbId ? existingByImdb.get(item.imdbId) : undefined;
+            const existingByTmdbItem = item.tmdbId ? existingByTmdb.get(item.tmdbId) : undefined;
+            const existingByTvdbItem = item.tvdbId ? existingByTvdb.get(item.tvdbId) : undefined;
+            const existing = existingByImdbItem || existingByTmdbItem || existingByTvdbItem;
 
-                return {
+            if (item.tmdbId) {
+              await this.prisma.collectionItem.upsert({
+                where: {
+                  collectionId_tmdbId: {
+                    collectionId,
+                    tmdbId: item.tmdbId,
+                  },
+                },
+                create: {
                   collectionId,
                   ...item,
                   inEmby: existing?.inEmby ?? false,
                   embyItemId: existing?.embyItemId ?? null,
-                };
-              }),
-            }),
-          ]);
+                },
+                update: {
+                  ...item,
+                  inEmby: existing?.inEmby ?? false,
+                  embyItemId: existing?.embyItemId ?? null,
+                },
+              });
+            } else {
+              await this.prisma.collectionItem.create({
+                data: {
+                  collectionId,
+                  ...item,
+                  inEmby: existing?.inEmby ?? false,
+                  embyItemId: existing?.embyItemId ?? null,
+                },
+              });
+            }
+          }
+
+          // Remove stale items (items that no longer exist in the source)
+          const newTmdbIds = dedupedItems.map(item => item.tmdbId).filter(Boolean) as string[];
+          if (newTmdbIds.length > 0) {
+            await this.prisma.collectionItem.deleteMany({
+              where: {
+                collectionId,
+                tmdbId: { notIn: newTmdbIds },
+              },
+            });
+          }
 
           totalItems = dedupedItems.length;
         }
@@ -139,6 +162,17 @@ export class CollectionService {
         prisma: this.prisma,
         collectionId,
       });
+
+      const collectionSettings = await this.prisma.collection.findUnique({
+        where: { id: collectionId },
+        select: { autoDownload: true },
+      });
+
+      if (collectionSettings?.autoDownload) {
+        autoDownloadCollectionItems(this.prisma, this.config, collectionId).catch((error) => {
+          this.log.warn(`Auto-download failed for collection ${collectionId}: ${(error as Error).message}`);
+        });
+      }
 
       this.log.info(`Refresh completed for collection ${collectionId}: ${totalItems} items`);
     }

@@ -12,6 +12,7 @@ import { syncCollections, removeCollectionFromEmby } from '../emby/sync-service.
 import { requireAdmin } from '../../shared/middleware/index.js';
 import { createCollectionService } from './service.js';
 import { getPostersDir } from '../../utils/paths.js';
+import { writeAuditLog } from '../../utils/audit-log.js';
 
 const POSTERS_DIR = getPostersDir();
 
@@ -21,12 +22,14 @@ const createCollectionSchema = z.object({
   sourceType: z.enum(['MDBLIST', 'TRAKT_LIST', 'TRAKT_WATCHLIST', 'TRAKT_COLLECTION', 'MANUAL']),
   sourceId: z.string().optional(),
   sourceUrl: z.string().optional(),
+  autoDownload: z.boolean().optional(),
 });
 
 const updateCollectionSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   isEnabled: z.boolean().optional(),
+  autoDownload: z.boolean().optional(),
 });
 
 interface CollectionParams {
@@ -90,7 +93,7 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       });
     }
 
-    const { name, description, sourceType, sourceId, sourceUrl } = validation.data;
+    const { name, description, sourceType, sourceId, sourceUrl, autoDownload } = validation.data;
 
     if (['MDBLIST', 'TRAKT_LIST'].includes(sourceType) && !sourceId) {
       return reply.code(400).send({
@@ -112,8 +115,15 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     }
 
     const collection = await fastify.prisma.collection.create({
-      data: { name, description, sourceType, sourceId, sourceUrl },
+      data: { name, description, sourceType, sourceId, sourceUrl, autoDownload },
       include: { embyServers: true },
+    });
+
+    await writeAuditLog(fastify, request, {
+      action: 'collection.create',
+      entity: 'collection',
+      entityId: collection.id,
+      metadata: { sourceType, sourceId },
     });
 
     // Schedule the collection for individual sync
@@ -192,6 +202,13 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       include: { embyServers: true },
     });
 
+    await writeAuditLog(fastify, request, {
+      action: 'collection.update',
+      entity: 'collection',
+      entityId: collection.id,
+      metadata: validation.data,
+    });
+
     // Update the schedule if isEnabled changed
     if (validation.data.isEnabled !== undefined && fastify.collectionScheduler) {
       await fastify.collectionScheduler.scheduleCollection(collection);
@@ -241,6 +258,12 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     }
 
     await fastify.prisma.collection.delete({ where: { id: request.params.id } });
+    await writeAuditLog(fastify, request, {
+      action: 'collection.delete',
+      entity: 'collection',
+      entityId: request.params.id,
+      metadata: { name: existing.name },
+    });
     return reply.code(204).send();
   });
 
@@ -256,13 +279,17 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       return reply.code(400).send({ error: 'Bad Request', message: 'Manual collections cannot be refreshed from source' });
     }
 
-    // Delete existing items first
-    await fastify.prisma.collectionItem.deleteMany({ where: { collectionId: request.params.id } });
-
-    // Start background refresh
+    // Start background refresh (items will be updated via upsert to prevent empty state)
     setImmediate(() => {
       collectionService.refreshCollection(request.params.id, collection.sourceType, collection.sourceId || undefined)
         .catch(err => fastify.log.error(`Refresh failed for collection ${request.params.id}: ${(err as Error).message}`));
+    });
+
+    await writeAuditLog(fastify, request, {
+      action: 'collection.refresh',
+      entity: 'collection',
+      entityId: request.params.id,
+      metadata: { sourceType: collection.sourceType },
     });
 
     return { success: true, message: 'Refresh started - items will be added progressively', lastSyncAt: new Date().toISOString() };
@@ -369,11 +396,20 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
 
     const { pipeline } = await import('stream/promises');
     const { createWriteStream } = await import('fs');
+    const { mkdir } = await import('fs/promises');
+    await mkdir(POSTERS_DIR, { recursive: true });
     await pipeline(data.file, createWriteStream(filepath));
 
     const updated = await fastify.prisma.collection.update({
       where: { id: request.params.id },
       data: { posterPath: `/api/v1/collections/${request.params.id}/poster` },
+    });
+
+    await writeAuditLog(fastify, request, {
+      action: 'collection.poster.upload',
+      entity: 'collection',
+      entityId: request.params.id,
+      metadata: { mimeType: data.mimetype },
     });
 
     return { success: true, posterPath: updated.posterPath };
@@ -421,6 +457,11 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
     }
 
     await fastify.prisma.collection.update({ where: { id: request.params.id }, data: { posterPath: null } });
+    await writeAuditLog(fastify, request, {
+      action: 'collection.poster.delete',
+      entity: 'collection',
+      entityId: request.params.id,
+    });
     return reply.code(204).send();
   });
 }
