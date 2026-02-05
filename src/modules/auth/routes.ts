@@ -172,7 +172,14 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
   fastify.get('/me', {
     preHandler: [fastify.authenticate],
-  }, async (request: FastifyRequest) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.user?.id) {
+      return reply.code(401).send({
+        error: 'Unauthorized',
+        message: 'Authentication required',
+      });
+    }
+
     const user = await fastify.prisma.user.findUnique({
       where: { id: request.user!.id },
       select: {
@@ -194,6 +201,26 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       },
     });
 
+    if (!user) {
+      if (fastify.config.auth.disabled) {
+        return {
+          id: request.user.id,
+          email: request.user.email,
+          apiKey: null,
+          isAdmin: request.user.isAdmin ?? true,
+          createdAt: new Date(),
+          traktConnected: !!settings?.traktAccessToken,
+          mdblistConnected: !!settings?.mdblistApiKey,
+          tmdbConnected: !!settings?.tmdbApiKey,
+        };
+      }
+
+      return reply.code(401).send({
+        error: 'Unauthorized',
+        message: 'User not found',
+      });
+    }
+
     return {
       ...user,
       traktConnected: !!settings?.traktAccessToken,
@@ -204,7 +231,29 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
 
   fastify.post('/api-key/regenerate', {
     preHandler: [fastify.authenticate],
-  }, async (request: FastifyRequest) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.user?.id) {
+      return reply.code(401).send({
+        error: 'Unauthorized',
+        message: 'Authentication required',
+      });
+    }
+
+    const existing = await fastify.prisma.user.findUnique({
+      where: { id: request.user.id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      if (fastify.config.auth.disabled) {
+        return { apiKey: null };
+      }
+      return reply.code(401).send({
+        error: 'Unauthorized',
+        message: 'User not found',
+      });
+    }
+
     const newApiKey = crypto.randomUUID();
 
     const user = await fastify.prisma.user.update({

@@ -109,6 +109,8 @@ interface Collection {
   posterPath?: string;
   items: CollectionItem[];
   scheduleInfo?: ScheduleInfo | null;
+  autoDownload?: boolean;
+  lastSyncAt?: string | null;
 }
 
 
@@ -118,6 +120,7 @@ interface Stats {
   inEmby: number;
   missing: number;
   percentInLibrary: number;
+  lastSyncAt?: string | null;
 }
 
 interface SyncResult {
@@ -170,6 +173,7 @@ const CollectionDetail: FC = () => {
   const [loadingDownloadStatus, setLoadingDownloadStatus] = useState<boolean>(true);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState<boolean>(false);
+  const [savingAutoDownload, setSavingAutoDownload] = useState<boolean>(false);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const hasAutoStartedPolling = useRef<boolean>(false);
   const [confirmAction, setConfirmAction] = useState<'deleteCollection' | 'deletePoster' | null>(null);
@@ -182,42 +186,56 @@ const CollectionDetail: FC = () => {
   });
   const [sseConnected, setSseConnected] = useState<boolean>(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const POLL_INTERVAL_MS = 1500;
+  const MAX_IDLE_POLLS = 12;
 
   const startPolling = () => {
-    if (pollIntervalRef.current) return;
+    if (!id || pollIntervalRef.current) return;
 
     setIsPolling(true);
     let noChangeCount = 0;
     let lastItemCount = collection?.items?.length || 0;
+    const initialLastSyncAt = collection?.lastSyncAt || null;
+    let pollInFlight = false;
 
     pollIntervalRef.current = setInterval(async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
+
       try {
-        const updatedCollection = await api.getCollection(id!);
-        setCollection(updatedCollection);
+        const latestStats = await api.getCollectionStats(id);
+        setStats(latestStats);
 
-        const currentItemCount = updatedCollection.items?.length || 0;
+        const currentItemCount = latestStats?.total || 0;
+        const syncCompleted = Boolean(
+          latestStats?.lastSyncAt && latestStats.lastSyncAt !== initialLastSyncAt
+        );
+        const itemCountChanged = currentItemCount !== lastItemCount;
 
-        if (currentItemCount > 0 && lastItemCount === 0) {
-          setRefreshing(false);
+        if (itemCountChanged || syncCompleted) {
+          const updatedCollection = await api.getCollection(id);
+          setCollection(updatedCollection);
+          lastItemCount = updatedCollection.items?.length || currentItemCount;
+          noChangeCount = 0;
+        } else {
+          noChangeCount++;
         }
 
-        if (currentItemCount === lastItemCount) {
-          noChangeCount++;
-          if (noChangeCount >= 30 && pollIntervalRef.current) {
+        if (syncCompleted || noChangeCount >= MAX_IDLE_POLLS) {
+          if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = undefined;
-            setIsPolling(false);
-            setRefreshing(false);
-            loadStats();
           }
-        } else {
-          noChangeCount = 0;
-          lastItemCount = currentItemCount;
+          setIsPolling(false);
+          setRefreshing(false);
+          loadStats();
         }
       } catch (err) {
         console.warn('Polling error:', err);
+      } finally {
+        pollInFlight = false;
       }
-    }, 1000);
+    }, POLL_INTERVAL_MS);
   };
 
   // Cleanup polling on unmount
@@ -464,6 +482,25 @@ const CollectionDetail: FC = () => {
     }
   };
 
+  const handleAutoDownloadToggle = async (enabled: boolean): Promise<void> => {
+    if (!collection) return;
+    setSavingAutoDownload(true);
+    try {
+      await api.updateCollection(collection.id, { autoDownload: enabled });
+      setCollection({ ...collection, autoDownload: enabled });
+      addToast(
+        enabled
+          ? 'Auto-download enabled for this collection'
+          : 'Auto-download disabled for this collection',
+        'success'
+      );
+    } catch (err: any) {
+      addToast(`Failed to update auto-download: ${err.message}`, 'error');
+    } finally {
+      setSavingAutoDownload(false);
+    }
+  };
+
   const handleDelete = async (): Promise<void> => {
     try {
       await api.deleteCollection(id!);
@@ -666,6 +703,19 @@ const CollectionDetail: FC = () => {
                 Next refresh: {new Date(collection.scheduleInfo.nextRun).toLocaleString()}
               </p>
             )}
+            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={Boolean(collection.autoDownload)}
+                  onChange={(event) => handleAutoDownloadToggle(event.target.checked)}
+                  disabled={savingAutoDownload}
+                  className="rounded border-border/50"
+                />
+                Auto-download missing items to Radarr/Sonarr
+              </label>
+              {savingAutoDownload && <Loader2 size={12} className="animate-spin" />}
+            </div>
           </div>
         </div>
 

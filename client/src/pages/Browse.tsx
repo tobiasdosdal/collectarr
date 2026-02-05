@@ -434,6 +434,7 @@ const TraktBrowser: FC = () => {
 
 const AddFromSourceModal: FC<AddFromSourceModalProps> = ({ source, sourceId, sourceName, onClose }) => {
   const [name, setName] = useState<string>(sourceName);
+  const [autoDownload, setAutoDownload] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const navigate = useNavigate();
@@ -448,6 +449,7 @@ const AddFromSourceModal: FC<AddFromSourceModalProps> = ({ source, sourceId, sou
         name,
         sourceType: source,
         sourceId: sourceId || undefined,
+        autoDownload,
       };
       const collection = await api.createCollection(payload);
       navigate(`/collections/${collection.id}`);
@@ -501,6 +503,16 @@ const AddFromSourceModal: FC<AddFromSourceModalProps> = ({ source, sourceId, sou
               className="w-full h-10 px-3 rounded-lg bg-secondary border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
             />
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={autoDownload}
+              onChange={(event) => setAutoDownload(event.target.checked)}
+              className="rounded border-border/50"
+            />
+            Auto-download missing items to Radarr/Sonarr
+          </label>
 
           <div className="flex gap-3 pt-4">
             <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>

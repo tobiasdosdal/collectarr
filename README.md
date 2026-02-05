@@ -70,6 +70,9 @@ npm start
 | `ENCRYPTION_KEY` | Auto* | Key for encrypting API keys (min 32 chars) |
 | `PORT` | No | Server port (default: 7795) |
 | `DATABASE_URL` | No | SQLite database path |
+| `DATA_DIR` | No | Base data directory (default: `data`) |
+| `UPLOADS_DIR` | No | Uploads directory (default: `data/uploads`) |
+| `IMAGE_CACHE_DIR` | No | Image cache directory (default: `data/image-cache`) |
 | `DISABLE_AUTH` | No | Disable auth for external auth (Authelia/Authentik) |
 | `MDBLIST_API_KEY` | No | Default MDBList API key |
 | `TMDB_API_KEY` | No | TMDb API for poster fallback |

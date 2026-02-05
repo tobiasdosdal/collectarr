@@ -110,6 +110,7 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
     const result = await syncCollections({
       userId: request.user?.id,
       prisma: fastify.prisma,
+      logger: fastify.log,
     });
     return result;
   });
@@ -134,6 +135,7 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       userId: request.user?.id,
       prisma: fastify.prisma,
       collectionId: collection.id,
+      logger: fastify.log,
     });
 
     return result;
@@ -158,6 +160,7 @@ export default async function embyRoutes(fastify: FastifyInstance): Promise<void
       userId: request.user?.id,
       prisma: fastify.prisma,
       embyServerId: server.id,
+      logger: fastify.log,
     });
 
     return result;

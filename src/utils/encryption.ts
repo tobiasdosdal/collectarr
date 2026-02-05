@@ -1,7 +1,9 @@
 import crypto from 'crypto';
+import { createLogger } from './runtime-logger.js';
 
 const ALGORITHM = 'aes-256-cbc';
 const IV_LENGTH = 16;
+const log = createLogger('security.encryption');
 
 const getKey = (): Buffer => {
   const key = process.env.ENCRYPTION_KEY;
@@ -48,7 +50,7 @@ export const decrypt = (encryptedText: string, ivHex: string): string | null => 
 
     return decrypted;
   } catch (error) {
-    console.error('Decryption failed:', (error as Error).message);
+    log.error('Decryption failed', { error: (error as Error).message });
     return null;
   }
 };

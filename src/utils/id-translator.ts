@@ -4,6 +4,7 @@
  */
 
 import { createTMDbClient } from '../modules/external/tmdb/client.js';
+import { createLogger } from './runtime-logger.js';
 import type { AppConfig } from '../types/index.js';
 import type TMDbClient from '../modules/external/tmdb/client.js';
 
@@ -31,6 +32,7 @@ interface CacheEntry {
 
 class IdTranslator {
   private tmdbClient: TMDbClient | null;
+  private log = createLogger('id-translator');
   private cache: Map<string, CacheEntry> = new Map();
   private cacheTimeout = 1000 * 60 * 60; // 1 hour
 
@@ -151,7 +153,11 @@ class IdTranslator {
         }
       }
     } catch (error) {
-      console.error(`ID translation failed for ${item.title}:`, (error as Error).message);
+      this.log.error('ID translation failed', {
+        title: item.title,
+        mediaType: item.mediaType,
+        error: (error as Error).message,
+      });
     }
 
     if (translated) {

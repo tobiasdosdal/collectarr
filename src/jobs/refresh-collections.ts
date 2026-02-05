@@ -10,15 +10,18 @@ import { ensureValidTraktTokens } from '../utils/trakt-auth.js';
 import { withRetry } from '../utils/retry.js';
 import { cacheImage } from '../utils/image-cache.js';
 import { fetchTmdbPoster, fetchTmdbBackdrop } from '../utils/tmdb-api.js';
+import { createLogger } from '../utils/runtime-logger.js';
 import { COLLECTION_ITEM_FETCH_DELAY_MS } from '../config/constants.js';
 import { JobQueue } from './job-queue.js';
 import { JobPriority } from './job-types.js';
 import { ItemEnrichmentJob } from './item-enrichment-job.js';
+import { EventEmitter } from 'events';
 import type { EnrichItemJobData } from './item-enrichment-job.js';
 import type { FastifyInstance } from 'fastify';
 import type { PrismaClient, Collection, Settings } from '@prisma/client';
 import type { AppConfig } from '../types/index.js';
 import type { MDBListItem } from '../modules/external/mdblist/client.js';
+import { autoDownloadCollectionItems } from '../modules/downloaders/auto-download.js';
 
 // Type alias for collection data used in refresh operations
 type RefreshableCollection = Collection;
@@ -46,6 +49,8 @@ interface CollectionItem {
 
 // Global job queue instance
 let jobQueueInstance: JobQueue | null = null;
+const jobQueueEvents = new EventEmitter();
+const refreshLog = createLogger('jobs.refresh-collections');
 
 /**
  * Initialize the job queue on server start
@@ -64,6 +69,7 @@ export function initializeJobQueue(fastify: FastifyInstance): JobQueue {
   });
 
   jobQueueInstance = queue;
+  jobQueueEvents.emit('ready', queue);
   fastify.log.info('Job queue initialized');
   return queue;
 }
@@ -73,6 +79,27 @@ export function initializeJobQueue(fastify: FastifyInstance): JobQueue {
  */
 export function getJobQueue(): JobQueue | null {
   return jobQueueInstance;
+}
+
+export function onJobQueueReady(listener: (queue: JobQueue) => void): () => void {
+  if (jobQueueInstance) {
+    listener(jobQueueInstance);
+  }
+
+  jobQueueEvents.on('ready', listener);
+  return () => {
+    jobQueueEvents.off('ready', listener);
+  };
+}
+
+export function stopJobQueue(): void {
+  if (!jobQueueInstance) {
+    return;
+  }
+
+  jobQueueInstance.stop();
+  jobQueueInstance.removeAllListeners();
+  jobQueueInstance = null;
 }
 
 export async function refreshCollectionsJob(fastify: FastifyInstance): Promise<RefreshResult> {
@@ -169,18 +196,37 @@ async function refreshCollection(fastify: FastifyInstance, collection: Refreshab
     },
   });
 
+  const seenTmdbIds = new Set<string>();
+  const dedupedItems: CollectionItem[] = [];
+  for (const item of items) {
+    if (item.tmdbId) {
+      if (seenTmdbIds.has(item.tmdbId)) {
+        continue;
+      }
+      seenTmdbIds.add(item.tmdbId);
+    }
+    dedupedItems.push(item);
+  }
+
   const previousCount = existingItems.length;
   const existingByImdb = new Map(existingItems.filter(item => item.imdbId).map(item => [item.imdbId!, item]));
   const existingByTmdb = new Map(existingItems.filter(item => item.tmdbId).map(item => [item.tmdbId!, item]));
   const existingByTvdb = new Map(existingItems.filter(item => item.tvdbId).map(item => [item.tvdbId!, item]));
 
   // Save items immediately with basic data and enrichmentStatus = 'PENDING'
-  await prisma.$transaction([
+  const transactionSteps = [
     prisma.collectionItem.deleteMany({
       where: { collectionId: collection.id },
     }),
-    prisma.collectionItem.createMany({
-      data: items.map((item) => {
+    prisma.collection.update({
+      where: { id: collection.id },
+      data: { lastSyncAt: new Date() },
+    }),
+  ];
+
+  if (dedupedItems.length > 0) {
+    transactionSteps.splice(1, 0, prisma.collectionItem.createMany({
+      data: dedupedItems.map((item) => {
         const existingByImdbItem = item.imdbId ? existingByImdb.get(item.imdbId) : undefined;
         const existingByTmdbItem = item.tmdbId ? existingByTmdb.get(item.tmdbId) : undefined;
         const existingByTvdbItem = item.tvdbId ? existingByTvdb.get(item.tvdbId) : undefined;
@@ -205,25 +251,23 @@ async function refreshCollection(fastify: FastifyInstance, collection: Refreshab
           enrichmentAttempts: 0,
         };
       }),
-    }),
-    prisma.collection.update({
-      where: { id: collection.id },
-      data: { lastSyncAt: new Date() },
-    }),
-  ]);
+    }));
+  }
+
+  await prisma.$transaction(transactionSteps);
 
   await prisma.syncLog.create({
     data: {
       userId: null,
       collectionId: collection.id,
       status: 'SUCCESS',
-      itemsTotal: items.length,
-      itemsMatched: items.length,
+      itemsTotal: dedupedItems.length,
+      itemsMatched: dedupedItems.length,
       details: JSON.stringify({
         previousCount,
-        newCount: items.length,
-        added: Math.max(0, items.length - previousCount),
-        removed: Math.max(0, previousCount - items.length),
+        newCount: dedupedItems.length,
+        added: Math.max(0, dedupedItems.length - previousCount),
+        removed: Math.max(0, previousCount - dedupedItems.length),
       }),
       completedAt: new Date(),
     },
@@ -266,9 +310,16 @@ async function refreshCollection(fastify: FastifyInstance, collection: Refreshab
   await syncCollections({
     prisma,
     collectionId: collection.id,
+    logger: log,
   });
 
-  log.info(`Refreshed ${collection.name}: ${items.length} items (enrichment queued)`);
+  if (collection.autoDownload) {
+    autoDownloadCollectionItems(prisma, config, collection.id).catch((error) => {
+      log.warn(`Auto-download failed for collection ${collection.id}: ${(error as Error).message}`);
+    });
+  }
+
+  log.info(`Refreshed ${collection.name}: ${dedupedItems.length} items (enrichment queued)`);
 }
 
 async function refreshFromMdblist(
@@ -362,7 +413,10 @@ async function fetchItemDetails(item: MDBListItem, apiKey: string): Promise<Coll
       }
     }
   } catch (err) {
-    console.warn(`Failed to fetch details for ${item.imdbId}:`, (err as Error).message);
+    refreshLog.warn('Failed to fetch MDBList details for item', {
+      imdbId: item.imdbId,
+      error: (err as Error).message,
+    });
   }
 
   if (!result.posterPath && result.tmdbId) {

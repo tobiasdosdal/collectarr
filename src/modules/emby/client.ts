@@ -4,6 +4,7 @@
  */
 
 import { BaseApiClient, type HttpError, type TestConnectionResult } from '../../shared/http/index.js';
+import { createLogger } from '../../utils/runtime-logger.js';
 
 export interface EmbyServerInfo {
   ServerName: string;
@@ -63,6 +64,8 @@ interface FindByProviderParams {
 }
 
 class EmbyClient extends BaseApiClient {
+  private readonly log = createLogger('emby.client');
+
   constructor(serverUrl: string, apiKey: string) {
     super(
       serverUrl,
@@ -238,13 +241,17 @@ class EmbyClient extends BaseApiClient {
     const url = new URL(`${this.baseUrl}/Items/${itemId}/Images/${imageType}`);
     url.searchParams.set('api_key', this.apiKey);
 
-    console.log(`[Emby Client] Uploading image to: ${url.toString().replace(this.apiKey, '***')}`);
-    console.log(`[Emby Client] Item ID: ${itemId}, Image Type: ${imageType}, Size: ${imageData.length} bytes, MIME: ${mimeType}`);
+    this.log.debug('Uploading image', {
+      itemId,
+      imageType,
+      sizeBytes: imageData.length,
+      mimeType,
+      url: url.toString().replace(this.apiKey, '***'),
+    });
 
     try {
       // Emby expects base64 encoded image data with the correct image MIME type
       const base64Data = imageData.toString('base64');
-      console.log(`[Emby Client] Converted to base64, length: ${base64Data.length} chars`);
       
       const response = await fetch(url.toString(), {
         method: 'POST',
@@ -254,11 +261,22 @@ class EmbyClient extends BaseApiClient {
         body: base64Data,
       });
 
-      console.log(`[Emby Client] Response status: ${response.status} ${response.statusText}`);
+      this.log.debug('Image upload response', {
+        itemId,
+        imageType,
+        status: response.status,
+        statusText: response.statusText,
+      });
 
       if (!response.ok) {
         const responseText = await response.text();
-        console.error(`[Emby Client] Error response body: ${responseText}`);
+        this.log.error('Image upload failed', {
+          itemId,
+          imageType,
+          status: response.status,
+          statusText: response.statusText,
+          responseBody: responseText.slice(0, 500),
+        });
         const error = new Error(`Failed to upload image: ${response.status} ${response.statusText} - ${responseText}`) as HttpError;
         error.status = response.status;
         throw error;

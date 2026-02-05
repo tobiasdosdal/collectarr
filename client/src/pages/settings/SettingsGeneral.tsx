@@ -16,9 +16,16 @@ import {
   CheckCircle,
   Play,
   ExternalLink,
+  Image,
 } from 'lucide-react';
 
-type ConfirmAction = 'regenerateApiKey' | 'disconnectTrakt' | 'disconnectMdblist' | 'disconnectTmdb' | null;
+type ConfirmAction =
+  | 'regenerateApiKey'
+  | 'disconnectTrakt'
+  | 'disconnectMdblist'
+  | 'disconnectTmdb'
+  | 'regeneratePosters'
+  | null;
 
 const SettingsGeneral: FC = () => {
   const { user, refreshUser } = useAuth();
@@ -32,6 +39,7 @@ const SettingsGeneral: FC = () => {
   const [tmdbValidationError, setTmdbValidationError] = useState<string>('');
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [includeCustomPosters, setIncludeCustomPosters] = useState<boolean>(false);
 
   const copyApiKey = async (): Promise<void> => {
     await navigator.clipboard.writeText(user?.apiKey || '');
@@ -216,6 +224,26 @@ const SettingsGeneral: FC = () => {
       addToast(`Failed to disconnect: ${err.message}`, 'error');
     } finally {
       setLoading(prev => ({ ...prev, tmdb: false }));
+      setConfirmAction(null);
+    }
+  };
+
+  const regeneratePosters = async (): Promise<void> => {
+    setLoading(prev => ({ ...prev, posterRegen: true }));
+    try {
+      const result = await api.regenerateCollectionPosters(includeCustomPosters);
+      if (result.success) {
+        addToast(
+          `Poster regeneration complete. Generated ${result.generated}, skipped ${result.skipped}, failed ${result.failed}.`,
+          'success'
+        );
+      } else {
+        addToast('Poster regeneration failed', 'error');
+      }
+    } catch (err: any) {
+      addToast(`Poster regeneration failed: ${err.message}`, 'error');
+    } finally {
+      setLoading(prev => ({ ...prev, posterRegen: false }));
       setConfirmAction(null);
     }
   };
@@ -531,6 +559,49 @@ const SettingsGeneral: FC = () => {
         </div>
       </div>
 
+      {/* Posters Section */}
+      <div className="bg-card border border-border/50 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+            <Image size={18} className="text-amber-500" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold m-0">Posters</h2>
+            <p className="text-sm text-muted-foreground m-0">Regenerate collection posters from TMDB</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={includeCustomPosters}
+              onChange={(event) => setIncludeCustomPosters(event.target.checked)}
+              className="rounded border-border/50"
+            />
+            Include collections with custom posters
+          </label>
+
+          <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              onClick={() => setConfirmAction('regeneratePosters')}
+              disabled={loading.posterRegen}
+            >
+              {loading.posterRegen ? (
+                <RefreshCw size={14} className="animate-spin mr-1" />
+              ) : (
+                <RefreshCw size={14} className="mr-1" />
+              )}
+              Regenerate Posters
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              This will refresh generated posters for all collections.
+            </span>
+          </div>
+        </div>
+      </div>
+
       {confirmAction === 'regenerateApiKey' && (
         <ConfirmationModal
           title="Regenerate API Key"
@@ -571,6 +642,21 @@ const SettingsGeneral: FC = () => {
           confirmText="Disconnect"
           isDangerous
           onConfirm={disconnectTmdb}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+
+      {confirmAction === 'regeneratePosters' && (
+        <ConfirmationModal
+          title="Regenerate Posters"
+          message={
+            includeCustomPosters
+              ? 'This will regenerate posters for all collections, including custom posters. Continue?'
+              : 'This will regenerate posters for collections using generated posters. Continue?'
+          }
+          confirmText="Regenerate"
+          isDangerous
+          onConfirm={regeneratePosters}
           onCancel={() => setConfirmAction(null)}
         />
       )}

@@ -12,7 +12,15 @@ import prismaPlugin from './plugins/prisma.js';
 import authPlugin from './plugins/auth.js';
 import rateLimitPlugin from './plugins/rate-limit.js';
 import jobsPlugin from './plugins/jobs.js';
-import { NetworkError } from './modules/shared/errors.js';
+import {
+  AuthenticationError,
+  ConflictError,
+  ExternalServiceError,
+  ForbiddenError,
+  NetworkError,
+  NotFoundError,
+  ValidationError,
+} from './modules/shared/errors.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -130,7 +138,55 @@ export async function buildApp(fastify: FastifyInstance): Promise<void> {
       },
     });
 
-    if ((error as any).code === 'NETWORK_ERROR' || (error instanceof TypeError && error.message.includes('fetch'))) {
+    if (error instanceof ValidationError) {
+      const validationError = error as ValidationError;
+      return reply.code(400).send({
+        error: 'Validation Error',
+        message: validationError.message,
+        details: validationError.details,
+      });
+    }
+
+    if (error instanceof AuthenticationError) {
+      return reply.code(401).send({
+        error: 'Unauthorized',
+        message: error.message,
+      });
+    }
+
+    if (error instanceof ForbiddenError) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        message: error.message,
+      });
+    }
+
+    if (error instanceof NotFoundError) {
+      return reply.code(404).send({
+        error: 'Not Found',
+        message: error.message,
+      });
+    }
+
+    if (error instanceof ConflictError) {
+      return reply.code(409).send({
+        error: 'Conflict',
+        message: error.message,
+      });
+    }
+
+    if (error instanceof ExternalServiceError) {
+      return reply.code(error.statusCode || 502).send({
+        error: 'External Service Error',
+        message: error.message,
+      });
+    }
+
+    if (
+      error instanceof NetworkError ||
+      (error as any).code === 'NETWORK_ERROR' ||
+      (error instanceof TypeError && error.message.includes('fetch'))
+    ) {
       return reply.code(502).send({
         error: 'Network Error',
         message: error.message || 'Failed to connect to external service',

@@ -5,6 +5,7 @@ import { fetchTmdbPoster, fetchTmdbBackdrop, fetchTmdbRating } from '../utils/tm
 import { cacheImage } from '../utils/image-cache.js';
 import { withRetry } from '../utils/retry.js';
 import { handleNetworkError } from '../utils/error-handling.js';
+import { createLogger } from '../utils/runtime-logger.js';
 import type { AppConfig } from '../types/index.js';
 
 export interface EnrichItemJobData {
@@ -27,6 +28,8 @@ const MAX_ENRICHMENT_ATTEMPTS = 3;
 const API_CALL_DELAY_MS = 100;
 
 export class ItemEnrichmentJob {
+  private static readonly log = createLogger('jobs.enrichment');
+
   static registerWithQueue(
     queue: JobQueue,
     prisma: PrismaClient,
@@ -76,7 +79,10 @@ export class ItemEnrichmentJob {
             Object.assign(updateData, mdblistData);
           }
         } catch (error) {
-          console.warn(`MDBList enrichment failed for item ${itemId}:`, (error as Error).message);
+          ItemEnrichmentJob.log.warn('MDBList enrichment failed for item', {
+            itemId,
+            error: (error as Error).message,
+          });
         }
       }
 
@@ -85,7 +91,11 @@ export class ItemEnrichmentJob {
           const tmdbData = await ItemEnrichmentJob.fetchTMDBData(tmdbId, mediaType, tmdbApiKey);
           Object.assign(updateData, tmdbData);
         } catch (error) {
-          console.warn(`TMDB enrichment failed for item ${itemId}:`, (error as Error).message);
+          ItemEnrichmentJob.log.warn('TMDB enrichment failed for item', {
+            itemId,
+            tmdbId,
+            error: (error as Error).message,
+          });
         }
       }
 
@@ -93,7 +103,10 @@ export class ItemEnrichmentJob {
         try {
           await ItemEnrichmentJob.cacheImageWithDelay(updateData.posterPath);
         } catch (error) {
-          console.warn(`Failed to cache poster for item ${itemId}:`, (error as Error).message);
+          ItemEnrichmentJob.log.warn('Failed to cache poster during enrichment', {
+            itemId,
+            error: (error as Error).message,
+          });
         }
       }
 
@@ -101,7 +114,10 @@ export class ItemEnrichmentJob {
         try {
           await ItemEnrichmentJob.cacheImageWithDelay(updateData.backdropPath);
         } catch (error) {
-          console.warn(`Failed to cache backdrop for item ${itemId}:`, (error as Error).message);
+          ItemEnrichmentJob.log.warn('Failed to cache backdrop during enrichment', {
+            itemId,
+            error: (error as Error).message,
+          });
         }
       }
 
@@ -115,7 +131,7 @@ export class ItemEnrichmentJob {
         },
       });
 
-      console.log(`Successfully enriched item ${itemId}`);
+      ItemEnrichmentJob.log.debug('Successfully enriched item', { itemId });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -137,7 +153,11 @@ export class ItemEnrichmentJob {
       });
 
       if (status === 'FAILED') {
-        console.error(`Item enrichment failed after ${MAX_ENRICHMENT_ATTEMPTS} attempts: ${data.itemId}`, errorMessage);
+        ItemEnrichmentJob.log.error('Item enrichment failed after max attempts', {
+          itemId: data.itemId,
+          attempts: MAX_ENRICHMENT_ATTEMPTS,
+          error: errorMessage,
+        });
       }
 
       throw error;

@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { Job } from '../jobs/job-types.js';
-import { getJobQueue } from '../jobs/refresh-collections.js';
+import type { JobQueue } from '../jobs/job-queue.js';
+import { onJobQueueReady } from '../jobs/refresh-collections.js';
 
 interface ProgressEvent {
   collectionId: string;
@@ -107,23 +108,19 @@ async function getEnrichedItemData(
   }
 }
 
-let fastifyInstance: FastifyInstance;
-
-export default async function collectionProgressRoutes(instance: FastifyInstance): Promise<void> {
-  fastifyInstance = instance;
-
-  fastifyInstance.addHook('preHandler', fastifyInstance.authenticate);
+export default async function collectionProgressRoutes(fastify: FastifyInstance): Promise<void> {
+  fastify.addHook('preHandler', fastify.authenticate);
 
   interface ProgressParams {
     id: string;
   }
 
-  fastifyInstance.get<{ Params: ProgressParams }>(
+  fastify.get<{ Params: ProgressParams }>(
     '/:id/progress',
     async (request: FastifyRequest<{ Params: ProgressParams }>, reply: FastifyReply) => {
       const { id: collectionId } = request.params;
 
-      const collection = await fastifyInstance.prisma.collection.findUnique({
+      const collection = await fastify.prisma.collection.findUnique({
         where: { id: collectionId },
       });
 
@@ -140,7 +137,7 @@ export default async function collectionProgressRoutes(instance: FastifyInstance
       collectionConnections.add(reply);
       connections.set(collectionId, collectionConnections);
 
-      const initialProgress = await getCollectionProgress(fastifyInstance, collectionId);
+      const initialProgress = await getCollectionProgress(fastify, collectionId);
       if (initialProgress) {
         const message = `event: progress\ndata: ${JSON.stringify(initialProgress)}\n\n`;
         reply.raw.write(message);
@@ -167,31 +164,30 @@ export default async function collectionProgressRoutes(instance: FastifyInstance
     }
   );
 
-  const queue = getJobQueue();
-  if (queue) {
-    queue.on('job:completed', async (job: Job) => {
+  const registerQueueListeners = (queue: JobQueue): (() => void) => {
+    const onJobCompleted = async (job: Job) => {
       if (!job.type.includes('enrich')) return;
 
-      const jobData = job.data as any;
+      const jobData = job.data as Partial<{ collectionId: string; itemId: string }>;
       if (!jobData?.collectionId || !jobData?.itemId) return;
 
       const { collectionId, itemId } = jobData;
 
-      const itemData = await getEnrichedItemData(fastifyInstance, itemId);
+      const itemData = await getEnrichedItemData(fastify, itemId);
       if (itemData) {
         broadcastToCollection(collectionId, 'item:enriched', itemData);
       }
 
-      const progress = await getCollectionProgress(fastifyInstance, collectionId);
+      const progress = await getCollectionProgress(fastify, collectionId);
       if (progress) {
         broadcastToCollection(collectionId, 'progress', progress);
       }
-    });
+    };
 
-    queue.on('job:failed', async (job: Job) => {
+    const onJobFailed = async (job: Job) => {
       if (!job.type.includes('enrich')) return;
 
-      const jobData = job.data as any;
+      const jobData = job.data as Partial<{ collectionId: string; itemId: string }>;
       if (!jobData?.collectionId || !jobData?.itemId) return;
 
       const { collectionId, itemId } = jobData;
@@ -203,10 +199,34 @@ export default async function collectionProgressRoutes(instance: FastifyInstance
       };
       broadcastToCollection(collectionId, 'item:failed', failedEvent);
 
-      const progress = await getCollectionProgress(fastifyInstance, collectionId);
+      const progress = await getCollectionProgress(fastify, collectionId);
       if (progress) {
         broadcastToCollection(collectionId, 'progress', progress);
       }
-    });
-  }
+    };
+
+    queue.on('job:completed', onJobCompleted);
+    queue.on('job:failed', onJobFailed);
+
+    return () => {
+      queue.off('job:completed', onJobCompleted);
+      queue.off('job:failed', onJobFailed);
+    };
+  };
+
+  let detachQueueListeners: (() => void) | null = null;
+  const unsubscribeQueueReady = onJobQueueReady((queue) => {
+    if (!detachQueueListeners) {
+      detachQueueListeners = registerQueueListeners(queue);
+    }
+  });
+
+  fastify.addHook('onClose', async () => {
+    unsubscribeQueueReady();
+    if (detachQueueListeners) {
+      detachQueueListeners();
+      detachQueueListeners = null;
+    }
+    connections.clear();
+  });
 }

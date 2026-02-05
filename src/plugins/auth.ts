@@ -30,7 +30,7 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
     try {
       await request.jwtVerify();
     } catch {
-      reply.code(401).send({ error: 'Unauthorized', message: 'Invalid or expired token' });
+      return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid or expired token' });
     }
   });
 
@@ -96,7 +96,7 @@ async function authPlugin(fastify: FastifyInstance): Promise<void> {
 
       request.user = user;
     } catch {
-      reply.code(401).send({ error: 'Unauthorized', message: 'Authentication required' });
+      return reply.code(401).send({ error: 'Unauthorized', message: 'Authentication required' });
     }
   });
 }

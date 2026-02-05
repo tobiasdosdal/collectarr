@@ -177,14 +177,20 @@ const Collections: FC = () => {
       setCollections(data);
 
       const stats: Record<string, CollectionStats> = {};
-      for (const collection of data) {
-        try {
-          const collStats = await api.getCollectionStats(collection.id);
-          stats[collection.id] = collStats;
-        } catch (err) {
-          console.warn(`Failed to load stats for ${collection.name}:`, err);
+      const statsResults = await Promise.allSettled(
+        data.map(async (collection: Collection) => ({
+          collection,
+          stats: await api.getCollectionStats(collection.id),
+        }))
+      );
+
+      statsResults.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          stats[result.value.collection.id] = result.value.stats;
+        } else {
+          console.warn('Failed to load collection stats:', result.reason as Error);
         }
-      }
+      });
       setCollectionStats(stats);
     } catch (err) {
       console.error('Failed to load collections:', err);
@@ -578,6 +584,7 @@ const Collections: FC = () => {
 const CreateCollectionModal: FC<CreateCollectionModalProps> = ({ onClose, onCreated }) => {
   const [name, setName] = useState<string>('');
   const [description, setDescription] = useState<string>('');
+  const [autoDownload, setAutoDownload] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
@@ -591,6 +598,7 @@ const CreateCollectionModal: FC<CreateCollectionModalProps> = ({ onClose, onCrea
         name,
         description,
         sourceType: 'MANUAL',
+        autoDownload,
       });
       onCreated(collection);
     } catch (err: any) {
@@ -639,6 +647,16 @@ const CreateCollectionModal: FC<CreateCollectionModalProps> = ({ onClose, onCrea
               className="w-full h-10 px-3 rounded-lg bg-secondary border border-border focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
             />
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={autoDownload}
+              onChange={(event) => setAutoDownload(event.target.checked)}
+              className="rounded border-border/50"
+            />
+            Auto-download missing items to Radarr/Sonarr
+          </label>
 
           <div className="flex gap-3 pt-4">
             <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>

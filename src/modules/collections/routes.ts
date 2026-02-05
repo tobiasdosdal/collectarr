@@ -7,7 +7,7 @@ import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { unlink } from 'fs/promises';
 import path from 'path';
-import { getCachedImageUrl, queueMissingImages } from '../../utils/image-cache.js';
+import { getCachedImageUrl } from '../../utils/image-cache.js';
 import { syncCollections, removeCollectionFromEmby } from '../emby/sync-service.js';
 import { requireAdmin } from '../../shared/middleware/index.js';
 import { createCollectionService } from './service.js';
@@ -160,8 +160,6 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
         backdropPath: item.backdropPath ? await getCachedImageUrl(item.backdropPath) : null,
       }))
     );
-
-    queueMissingImages(fastify.prisma).catch(err => fastify.log.warn('Failed to queue missing images:', err.message));
 
     let posterPath = collection.posterPath;
     if (posterPath?.startsWith('https://image.tmdb.org/')) {
@@ -347,7 +345,13 @@ export default async function collectionsRoutes(fastify: FastifyInstance): Promi
       fastify.prisma.collectionItem.count({ where: { collectionId: request.params.id, inEmby: false } }),
     ]);
 
-    return { total, inEmby, missing, percentInLibrary: total > 0 ? Math.round((inEmby / total) * 100) : 0 };
+    return {
+      total,
+      inEmby,
+      missing,
+      percentInLibrary: total > 0 ? Math.round((inEmby / total) * 100) : 0,
+      lastSyncAt: collection.lastSyncAt,
+    };
   });
 
   // Get missing items

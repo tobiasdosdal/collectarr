@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createCanvas } from 'canvas';
 import { getPostersDir } from './paths.js';
+import { createLogger } from './runtime-logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,6 +14,7 @@ const POSTERS_DIR = getPostersDir();
 const FONT_SIZE = 52;
 const MAX_CHARS_PER_LINE = 16;
 const LINE_HEIGHT = 70;
+const log = createLogger('collection-poster');
 
 // Font stack with fallbacks for Alpine Linux Docker environment
 const FONT_FAMILY = "'Liberation Sans', 'DejaVu Sans', 'Bitstream Vera Sans', Arial, sans-serif";
@@ -88,7 +90,11 @@ export async function generateCollectionPoster(
 
     return `/api/v1/images/collage/${filename}`;
   } catch (error) {
-    console.error('Failed to generate collection poster:', error);
+    log.error('Failed to generate collection poster', {
+      collectionId,
+      collectionName,
+      error: (error as Error).message,
+    });
     return null;
   }
 }

@@ -1,8 +1,9 @@
 import { TMDB_API_DELAY_MS } from '../config/constants.js';
 import { withRetry } from './retry.js';
-import { handleNetworkError } from './error-handling.js';
+import { createLogger } from './runtime-logger.js';
 
 let lastTmdbApiCallTime = 0;
+const log = createLogger('tmdb.api');
 
 function resolveTmdbApiKey(apiKey?: string): string | undefined {
   return apiKey || process.env.TMDB_API_KEY;
@@ -82,7 +83,11 @@ export async function fetchTmdbPoster(
       return `https://image.tmdb.org/t/p/w500${data.poster_path}`;
     }
   } catch (error) {
-    console.warn(`TMDB API error for ${tmdbId}:`, (error as Error).message);
+    log.warn('TMDB poster fetch failed', {
+      tmdbId,
+      mediaType,
+      error: (error as Error).message,
+    });
   }
 
   return null;
@@ -120,7 +125,11 @@ export async function fetchTmdbBackdrop(
       return `https://image.tmdb.org/t/p/w1280${data.backdrop_path}`;
     }
   } catch (error) {
-    console.warn(`TMDB API error for ${tmdbId}:`, (error as Error).message);
+    log.warn('TMDB backdrop fetch failed', {
+      tmdbId,
+      mediaType,
+      error: (error as Error).message,
+    });
   }
 
   return null;
@@ -160,7 +169,11 @@ export async function fetchTmdbRating(
 
     return { rating, ratingCount };
   } catch (error) {
-    console.warn(`TMDB rating fetch failed for ${tmdbId}:`, (error as Error).message);
+    log.warn('TMDB rating fetch failed', {
+      tmdbId,
+      mediaType,
+      error: (error as Error).message,
+    });
   }
 
   return { rating: null, ratingCount: null };
@@ -174,7 +187,11 @@ export async function searchTmdbByTitle(
 ): Promise<string | null> {
   const tmdbApiKey = resolveTmdbApiKey(apiKey);
   if (!tmdbApiKey) {
-    console.warn('TMDB_API_KEY not configured, cannot search by title');
+    log.debug('TMDB API key not configured; skipping title search', {
+      title,
+      mediaType,
+      year,
+    });
     return null;
   }
 
@@ -196,21 +213,34 @@ export async function searchTmdbByTitle(
         for (const result of results) {
           if (result.poster_path) {
             const posterUrl = `https://image.tmdb.org/t/p/w500${result.poster_path}`;
-            console.log(`TMDB search found poster for "${title}": ${result.title || 'unknown'}`);
+            log.debug('TMDB title search found poster', {
+              title,
+              matchedTitle: result.title || 'unknown',
+            });
             return posterUrl;
           }
         }
         if (results.length > 0) {
-          console.warn(`TMDB search found ${results.length} results for "${title}" but none had posters`);
+          log.debug('TMDB title search found results but no posters', {
+            title,
+            count: results.length,
+          });
         }
       } else {
-        console.warn(`TMDB search found no results for "${title}"`);
+        log.debug('TMDB title search found no results', { title });
       }
     } else {
-      console.warn(`TMDB search failed for "${title}": ${response.status} ${response.statusText}`);
+      log.warn('TMDB title search request failed', {
+        title,
+        status: response.status,
+        statusText: response.statusText,
+      });
     }
   } catch (error) {
-    console.warn(`TMDB search error for "${title}":`, (error as Error).message);
+    log.warn('TMDB title search error', {
+      title,
+      error: (error as Error).message,
+    });
   }
 
   return null;

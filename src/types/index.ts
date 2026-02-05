@@ -76,6 +76,7 @@ export interface Job {
   task: ScheduledTask | null;
   lastRun: Date | null;
   lastError: string | null;
+  lastDurationMs: number | null;
   runCount: number;
   isRunning: boolean;
 }
@@ -87,6 +88,7 @@ export interface JobStatus {
   isRunning: boolean;
   lastRun: Date | null;
   lastError: string | null;
+  lastDurationMs: number | null;
   runCount: number;
 }
 

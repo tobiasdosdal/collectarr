@@ -9,6 +9,7 @@ import type { MDBListItem } from '../../../types/external.types.js';
 import { cacheImage } from '../../../utils/image-cache.js';
 import { fetchTmdbPoster, fetchTmdbBackdrop, fetchTmdbRating } from '../../../utils/tmdb-api.js';
 import { createTMDbClient } from '../../../modules/external/tmdb/client.js';
+import { createLogger } from '../../../utils/runtime-logger.js';
 import { withRetry, RateLimiter } from '../../../utils/retry.js';
 
 interface MDBListDetail {
@@ -37,12 +38,81 @@ interface MDBListApiItem {
   imdbvotes?: number;
 }
 
+interface StatusError extends Error {
+  status?: number;
+}
+
 // Rate limiter for MDBList API: 40 requests per 10 seconds (4 req/sec with safety margin)
 const mdblistRateLimiter = new RateLimiter(35, 10000);
 
 const BATCH_SIZE = 10;
 const CONCURRENCY = 3; // Reduced from 5 to be more conservative
 const ITEM_DELAY_MS = 200; // Increased from 100 to reduce API pressure
+const MDBLIST_DETAIL_TIMEOUT_MS = 5000;
+const MDBLIST_DETAIL_MAX_RETRIES = 1;
+const MDBLIST_DETAIL_UNAVAILABLE_THRESHOLD = 3;
+const MDBLIST_DETAIL_COOLDOWN_MS = 120000;
+const MDBLIST_DETAIL_COOLDOWN_LOG_INTERVAL_MS = 30000;
+const log = createLogger('collections.mdblist-refresh');
+
+let mdblistDetailUnavailableConsecutive = 0;
+let mdblistDetailCooldownUntil = 0;
+let mdblistDetailNextCooldownLogAt = 0;
+
+function getErrorStatus(error: unknown): number | null {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    typeof (error as { status?: unknown }).status === 'number'
+  ) {
+    return (error as { status: number }).status;
+  }
+
+  return null;
+}
+
+function shouldSkipMdblistDetailFetch(): boolean {
+  return Date.now() < mdblistDetailCooldownUntil;
+}
+
+function maybeLogDetailCooldown(): void {
+  const now = Date.now();
+  if (now < mdblistDetailNextCooldownLogAt) {
+    return;
+  }
+
+  const remainingSeconds = Math.ceil((mdblistDetailCooldownUntil - now) / 1000);
+  log.warn('Skipping MDBList detail fetches during cooldown', {
+    cooldownSecondsRemaining: Math.max(remainingSeconds, 0),
+  });
+  mdblistDetailNextCooldownLogAt = now + MDBLIST_DETAIL_COOLDOWN_LOG_INTERVAL_MS;
+}
+
+function recordDetailFetchSuccess(): void {
+  mdblistDetailUnavailableConsecutive = 0;
+}
+
+function recordDetailFetchFailure(status: number | null, errorMessage: string): void {
+  if (status === 502 || status === 503 || status === 504) {
+    mdblistDetailUnavailableConsecutive++;
+
+    if (mdblistDetailUnavailableConsecutive >= MDBLIST_DETAIL_UNAVAILABLE_THRESHOLD) {
+      mdblistDetailCooldownUntil = Date.now() + MDBLIST_DETAIL_COOLDOWN_MS;
+      mdblistDetailNextCooldownLogAt = 0;
+      mdblistDetailUnavailableConsecutive = 0;
+
+      log.warn('MDBList detail endpoint is unavailable; entering cooldown', {
+        status,
+        cooldownMs: MDBLIST_DETAIL_COOLDOWN_MS,
+        error: errorMessage,
+      });
+      return;
+    }
+  } else {
+    mdblistDetailUnavailableConsecutive = 0;
+  }
+}
 
 export async function refreshFromMdblist(
   listId: string,
@@ -145,28 +215,41 @@ async function fetchMdblistItemDetailsOptimized(
     // Only fetch details if we have IMDb ID and missing data
     let detailFetchFailed = false;
     if (imdbId && needsDetailFetch(result)) {
-      try {
-        const detail = await fetchItemDetail(imdbId, apiKey);
-
-        if (detail) {
-          // Merge detail data (detail takes precedence)
-          result.tmdbId = detail.tmdbid?.toString() || result.tmdbId;
-          result.traktId = detail.traktid?.toString() || result.traktId;
-          result.tvdbId = detail.tvdbid?.toString() || result.tvdbId;
-          result.year = detail.year || result.year;
-          result.rating = detail.score || detail.imdbrating || result.rating;
-          result.ratingCount = detail.imdbvotes || result.ratingCount;
-
-          if (detail.poster) {
-            result.posterPath = buildPosterUrl(detail.poster);
-          }
-          if (detail.backdrop) {
-            result.backdropPath = buildBackdropUrl(detail.backdrop);
-          }
-        }
-      } catch (err) {
+      if (shouldSkipMdblistDetailFetch()) {
         detailFetchFailed = true;
-        console.warn(`MDBList detail fetch failed for ${imdbId}:`, (err as Error).message);
+        maybeLogDetailCooldown();
+      } else {
+        try {
+          const detail = await fetchItemDetail(imdbId, apiKey);
+          recordDetailFetchSuccess();
+
+          if (detail) {
+            // Merge detail data (detail takes precedence)
+            result.tmdbId = detail.tmdbid?.toString() || result.tmdbId;
+            result.traktId = detail.traktid?.toString() || result.traktId;
+            result.tvdbId = detail.tvdbid?.toString() || result.tvdbId;
+            result.year = detail.year || result.year;
+            result.rating = detail.score || detail.imdbrating || result.rating;
+            result.ratingCount = detail.imdbvotes || result.ratingCount;
+
+            if (detail.poster) {
+              result.posterPath = buildPosterUrl(detail.poster);
+            }
+            if (detail.backdrop) {
+              result.backdropPath = buildBackdropUrl(detail.backdrop);
+            }
+          }
+        } catch (err) {
+          detailFetchFailed = true;
+          const status = getErrorStatus(err);
+          const errorMessage = (err as Error).message;
+          recordDetailFetchFailure(status, errorMessage);
+          log.warn('MDBList detail fetch failed', {
+            imdbId,
+            status,
+            error: errorMessage,
+          });
+        }
       }
     }
 
@@ -178,14 +261,27 @@ async function fetchMdblistItemDetailsOptimized(
             const found = await tmdbClient.findByExternalId(imdbId, 'imdb_id');
             if (result.mediaType === 'MOVIE' && found.movies.length > 0) {
             result.tmdbId = found.movies[0]!.id.toString();
-            console.log(`TMDB ID translation: ${imdbId} -> ${result.tmdbId} for "${result.title}"`);
+            log.debug('Translated IMDb ID to TMDB ID', {
+              imdbId,
+              tmdbId: result.tmdbId,
+              title: result.title,
+              mediaType: result.mediaType,
+            });
           } else if (result.mediaType === 'SHOW' && found.shows.length > 0) {
             result.tmdbId = found.shows[0]!.id.toString();
-            console.log(`TMDB ID translation: ${imdbId} -> ${result.tmdbId} for "${result.title}"`);
+            log.debug('Translated IMDb ID to TMDB ID', {
+              imdbId,
+              tmdbId: result.tmdbId,
+              title: result.title,
+              mediaType: result.mediaType,
+            });
           }
         }
       } catch (err) {
-        console.warn(`TMDB ID translation failed for ${imdbId}:`, (err as Error).message);
+        log.warn('TMDB ID translation failed', {
+          imdbId,
+          error: (err as Error).message,
+        });
       }
     }
 
@@ -196,10 +292,18 @@ async function fetchMdblistItemDetailsOptimized(
         if (tmdbRating.rating && !result.rating) {
           result.rating = tmdbRating.rating;
           result.ratingCount = tmdbRating.ratingCount;
-          console.log(`TMDB fallback: fetched rating for "${result.title}": ${result.rating}`);
+          log.debug('Fetched TMDB fallback rating', {
+            title: result.title,
+            tmdbId: result.tmdbId,
+            rating: result.rating,
+          });
         }
       } catch (err) {
-        console.warn(`TMDB rating fetch failed for "${result.title}" (tmdbId: ${result.tmdbId}):`, (err as Error).message);
+        log.warn('TMDB fallback rating fetch failed', {
+          title: result.title,
+          tmdbId: result.tmdbId,
+          error: (err as Error).message,
+        });
       }
     }
 
@@ -234,19 +338,43 @@ async function fetchItemDetail(imdbId: string, apiKey: string): Promise<MDBListD
   return mdblistRateLimiter.execute(async () => {
     return withRetry(
       async () => {
-        const response = await fetch(`https://mdblist.com/api/?apikey=${apiKey}&i=${imdbId}`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), MDBLIST_DETAIL_TIMEOUT_MS);
 
-        if (response.ok) {
-          return response.json() as Promise<MDBListDetail>;
+        try {
+          const response = await fetch(
+            `https://mdblist.com/api/?apikey=${apiKey}&i=${imdbId}`,
+            { signal: controller.signal }
+          );
+
+          if (response.ok) {
+            return response.json() as Promise<MDBListDetail>;
+          }
+
+          if (response.status === 404) {
+            return null;
+          }
+
+          const statusError = new Error(`MDBList detail API error: ${response.status}`) as StatusError;
+          statusError.status = response.status;
+          throw statusError;
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            const timeoutError = new Error(
+              `MDBList detail API timeout after ${MDBLIST_DETAIL_TIMEOUT_MS}ms`
+            ) as StatusError;
+            timeoutError.status = 408;
+            throw timeoutError;
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutId);
         }
-
-        if (response.status === 404) {
-          return null;
-        }
-
-        throw new Error(`MDBList detail API error: ${response.status}`);
       },
-      { maxRetries: 3, retryableStatusCodes: [429, 500, 502, 503, 504] }
+      {
+        maxRetries: MDBLIST_DETAIL_MAX_RETRIES,
+        retryableStatusCodes: [408, 429, 500, 502, 503, 504],
+      }
     );
   });
 }

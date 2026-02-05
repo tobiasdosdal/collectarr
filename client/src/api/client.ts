@@ -163,6 +163,13 @@ class ApiClient {
     return this.request('/settings');
   }
 
+  async regenerateCollectionPosters(includeCustom = false): Promise<{ success: boolean; generated: number; failed: number; skipped: number }> {
+    return this.request('/settings/posters/regenerate', {
+      method: 'POST',
+      body: JSON.stringify({ includeCustom }),
+    });
+  }
+
   // Collections
   async getCollections(): Promise<any> {
     return this.request('/collections');

@@ -5,6 +5,7 @@
 
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireAdmin } from '../../shared/middleware/index.js';
+import { writeAuditLog } from '../../utils/audit-log.js';
 import { MediaServerService } from './service.js';
 import type {
   ServerConfig,
@@ -14,6 +15,14 @@ import type {
   ServerClient,
   ClientFactory,
 } from './types.js';
+
+function sanitizeServerAuditMetadata(body: ServerBody): Record<string, unknown> {
+  const metadata = { ...body } as Record<string, unknown>;
+  if ('apiKey' in metadata && typeof metadata['apiKey'] === 'string') {
+    metadata['apiKey'] = '[redacted]';
+  }
+  return metadata;
+}
 
 /**
  * Register standard server CRUD routes
@@ -53,11 +62,20 @@ export function registerServerRoutes<T extends ServerClient>(
         message: result.error,
       });
     }
+    if (result.server?.id) {
+      await writeAuditLog(fastify, request, {
+        action: 'server.create',
+        entity: config.serviceName.toLowerCase(),
+        entityId: result.server.id,
+      });
+    }
     return reply.code(201).send(result.server);
   });
 
   // POST /servers/test - Test server connection
-  fastify.post<{ Body: TestConnectionBody }>('/servers/test', async (request, reply) => {
+  fastify.post<{ Body: TestConnectionBody }>('/servers/test', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
     const { url, apiKey } = request.body;
     if (!url || !apiKey) {
       return reply.code(400).send({
@@ -80,6 +98,12 @@ export function registerServerRoutes<T extends ServerClient>(
         message: result.error,
       });
     }
+    await writeAuditLog(fastify, request, {
+      action: 'server.update',
+      entity: config.serviceName.toLowerCase(),
+      entityId: request.params.id,
+      metadata: sanitizeServerAuditMetadata(request.body),
+    });
     return result.server;
   });
 
@@ -94,6 +118,11 @@ export function registerServerRoutes<T extends ServerClient>(
         message: result.error,
       });
     }
+    await writeAuditLog(fastify, request, {
+      action: 'server.delete',
+      entity: config.serviceName.toLowerCase(),
+      entityId: request.params.id,
+    });
     return reply.code(204).send();
   });
 

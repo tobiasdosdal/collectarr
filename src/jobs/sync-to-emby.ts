@@ -70,6 +70,7 @@ export async function syncAllToEmby(
           collection,
           embyServer,
           prisma,
+          logger,
         });
 
         results.totalCollections++;

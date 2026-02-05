@@ -6,10 +6,6 @@
 import type { AppConfig, RefreshedItem } from '../../../types/index.js';
 import { createTraktClient } from '../../external/trakt/client.js';
 
-interface TraktSettings {
-  traktAccessToken: string | null;
-}
-
 interface CollectionSource {
   sourceType: string;
   sourceId: string | null;
@@ -17,16 +13,12 @@ interface CollectionSource {
 
 export async function refreshFromTrakt(
   collection: CollectionSource,
-  settings: TraktSettings | null,
+  accessToken: string,
   config: AppConfig
 ): Promise<RefreshedItem[]> {
-  if (!settings?.traktAccessToken) {
-    throw new Error('Trakt access token is required');
-  }
-
   const client = createTraktClient(
     config.external.trakt.clientId,
-    settings.traktAccessToken,
+    accessToken,
     config.external.trakt.baseUrl
   );
 

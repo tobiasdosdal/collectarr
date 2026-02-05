@@ -21,7 +21,7 @@ async function start(): Promise<void> {
       host: config.server.host,
     });
 
-    console.log(`Server running at http://${config.server.host}:${config.server.port}`);
+    fastify.log.info(`Server running at http://${config.server.host}:${config.server.port}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
@@ -31,7 +31,7 @@ async function start(): Promise<void> {
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
 signals.forEach((signal) => {
   process.on(signal, async () => {
-    console.log(`\nReceived ${signal}, shutting down gracefully...`);
+    fastify.log.info(`Received ${signal}, shutting down gracefully`);
     await fastify.close();
     process.exit(0);
   });

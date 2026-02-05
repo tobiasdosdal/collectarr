@@ -1,7 +1,6 @@
 import Fastify from 'fastify';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { buildApp } from '../dist-server/app.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, '..');
@@ -9,6 +8,10 @@ const projectRoot = path.join(__dirname, '..');
 // Use test database
 const testDbPath = path.join(projectRoot, 'prisma', 'test.db');
 process.env.DATABASE_URL = `file:${testDbPath}`;
+process.env.DISABLE_AUTH = 'false';
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  process.env.JWT_SECRET = 'test-jwt-secret-should-be-at-least-32-chars';
+}
 
 /**
  * Build a test instance of the app
@@ -18,6 +21,7 @@ export async function buildTestApp() {
     logger: false,
   });
 
+  const { buildApp } = await import('../dist-server/app.js');
   await buildApp(app);
   await app.ready();
 

@@ -34,6 +34,7 @@ class JobSchedulerImpl implements JobScheduler {
       task: null,
       lastRun: null,
       lastError: null,
+      lastDurationMs: null,
       runCount: 0,
       isRunning: false,
     };
@@ -111,6 +112,7 @@ class JobSchedulerImpl implements JobScheduler {
       job.lastRun = new Date();
       job.lastError = null;
       job.runCount++;
+      job.lastDurationMs = Date.now() - startTime;
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
       this.fastify.log.info(`Job ${name} completed in ${duration}s`);
@@ -118,6 +120,7 @@ class JobSchedulerImpl implements JobScheduler {
       return result;
     } catch (error) {
       job.lastError = (error as Error).message;
+      job.lastDurationMs = Date.now() - startTime;
       this.fastify.log.error(`Job ${name} failed: ${(error as Error).message}`);
       throw error;
     } finally {
@@ -136,6 +139,7 @@ class JobSchedulerImpl implements JobScheduler {
         isRunning: job.isRunning,
         lastRun: job.lastRun,
         lastError: job.lastError,
+        lastDurationMs: job.lastDurationMs,
         runCount: job.runCount,
       });
     }

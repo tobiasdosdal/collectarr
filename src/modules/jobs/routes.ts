@@ -4,6 +4,8 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { getJobQueue } from '../../jobs/refresh-collections.js';
+import { requireAdmin } from '../../shared/middleware/index.js';
 
 interface JobEnabledBody {
   enabled?: boolean;
@@ -11,10 +13,19 @@ interface JobEnabledBody {
 
 export default async function jobsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', fastify.authenticate);
+  fastify.addHook('preHandler', requireAdmin);
 
   fastify.get('/status', async () => {
     const status = fastify.scheduler.getStatus();
-    return { jobs: status };
+    const collectionSchedules = fastify.collectionScheduler.getScheduleStatus();
+    const queue = getJobQueue();
+    const queueStats = queue?.getStats() ?? null;
+
+    return {
+      jobs: status,
+      collectionSchedules,
+      queue: queueStats,
+    };
   });
 
   fastify.post<{ Params: { jobName: string } }>('/:jobName/run', async (request, reply) => {

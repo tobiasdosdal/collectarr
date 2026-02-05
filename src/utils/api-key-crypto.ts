@@ -4,11 +4,14 @@
  */
 
 import { encrypt, decrypt } from './encryption.js';
+import { createLogger } from './runtime-logger.js';
 
 interface EncryptedApiKey {
   apiKey: string;
   apiKeyIv: string;
 }
+
+const log = createLogger('security.api-key');
 
 /**
  * Encrypt an API key for storage
@@ -39,7 +42,7 @@ export const decryptApiKey = (encryptedApiKey: string, apiKeyIv: string | null):
   const decrypted = decrypt(encryptedApiKey, apiKeyIv);
   if (!decrypted) {
     // If decryption fails, return the original (might be legacy unencrypted)
-    console.error('Failed to decrypt API key, returning as-is');
+    log.error('Failed to decrypt API key; returning original value');
     return encryptedApiKey;
   }
 

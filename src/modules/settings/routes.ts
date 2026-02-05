@@ -1,5 +1,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { generateStateToken, verifyStateToken } from '../../utils/oauth-state.js';
+import { writeAuditLog } from '../../utils/audit-log.js';
+import { generateCollectionPoster } from '../../utils/collection-poster.js';
+import { hasUploadedPoster } from '../../utils/poster-utils.js';
 import { requireAdmin } from '../../shared/middleware/index.js';
 
 interface TraktCallbackQuery {
@@ -27,6 +30,10 @@ interface TmdbTestBody {
 
 interface MdblistTestBody {
   apiKey?: string;
+}
+
+interface PosterRegenerateBody {
+  includeCustom?: boolean;
 }
 
 // Helper function to mask API keys for display
@@ -176,13 +183,18 @@ export default async function settingsRoutes(fastify: FastifyInstance): Promise<
       },
     });
 
+    await writeAuditLog(fastify, request, {
+      action: 'settings.trakt.connect',
+      entity: 'settings',
+    });
+
     return { success: true, message: 'Trakt connected successfully' };
   });
 
   // DELETE /settings/trakt - Disconnect Trakt (admin only)
   fastify.delete('/trakt', {
     preHandler: [requireAdmin],
-  }, async () => {
+  }, async (request) => {
     await fastify.prisma.settings.upsert({
       where: { id: 'singleton' },
       create: { id: 'singleton' },
@@ -191,6 +203,11 @@ export default async function settingsRoutes(fastify: FastifyInstance): Promise<
         traktRefreshToken: null,
         traktExpiresAt: null,
       },
+    });
+
+    await writeAuditLog(fastify, request, {
+      action: 'settings.trakt.disconnect',
+      entity: 'settings',
     });
 
     return { success: true };
@@ -220,19 +237,29 @@ export default async function settingsRoutes(fastify: FastifyInstance): Promise<
       },
     });
 
+    await writeAuditLog(fastify, request, {
+      action: 'settings.mdblist.connect',
+      entity: 'settings',
+    });
+
     return { success: true };
   });
 
   // DELETE /settings/mdblist - Disconnect MDBList (admin only)
   fastify.delete('/mdblist', {
     preHandler: [requireAdmin],
-  }, async () => {
+  }, async (request) => {
     await fastify.prisma.settings.upsert({
       where: { id: 'singleton' },
       create: { id: 'singleton' },
       update: {
         mdblistApiKey: null,
       },
+    });
+
+    await writeAuditLog(fastify, request, {
+      action: 'settings.mdblist.disconnect',
+      entity: 'settings',
     });
 
     return { success: true };
@@ -292,13 +319,18 @@ export default async function settingsRoutes(fastify: FastifyInstance): Promise<
       },
     });
 
+    await writeAuditLog(fastify, request, {
+      action: 'settings.tmdb.connect',
+      entity: 'settings',
+    });
+
     return { success: true };
   });
 
   // DELETE /settings/tmdb - Disconnect TMDB (admin only)
   fastify.delete('/tmdb', {
     preHandler: [requireAdmin],
-  }, async () => {
+  }, async (request) => {
     await fastify.prisma.settings.upsert({
       where: { id: 'singleton' },
       create: { id: 'singleton' },
@@ -307,7 +339,61 @@ export default async function settingsRoutes(fastify: FastifyInstance): Promise<
       },
     });
 
+    await writeAuditLog(fastify, request, {
+      action: 'settings.tmdb.disconnect',
+      entity: 'settings',
+    });
+
     return { success: true };
+  });
+
+  // POST /settings/posters/regenerate - Regenerate collection posters (admin only)
+  fastify.post<{ Body: PosterRegenerateBody }>('/posters/regenerate', {
+    preHandler: [requireAdmin],
+  }, async (request, reply) => {
+    const includeCustom = request.body?.includeCustom === true;
+
+    const collections = await fastify.prisma.collection.findMany({
+      select: { id: true, name: true },
+    });
+
+    let generated = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    for (const collection of collections) {
+      const hasCustom = await hasUploadedPoster(collection.id);
+      if (hasCustom && !includeCustom) {
+        skipped++;
+        continue;
+      }
+
+      try {
+        const posterUrl = await generateCollectionPoster({
+          collectionId: collection.id,
+          collectionName: collection.name,
+        });
+        if (posterUrl) {
+          await fastify.prisma.collection.update({
+            where: { id: collection.id },
+            data: { posterPath: posterUrl },
+          });
+          generated++;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    await writeAuditLog(fastify, request, {
+      action: 'settings.posters.regenerate',
+      entity: 'settings',
+      metadata: { includeCustom, generated, failed, skipped },
+    });
+
+    return reply.send({ success: true, generated, failed, skipped });
   });
 
   // POST /settings/tmdb/test - Test TMDB API key without saving (admin only)

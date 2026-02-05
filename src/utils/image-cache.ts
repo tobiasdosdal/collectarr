@@ -3,15 +3,18 @@
  * Downloads and caches images locally from TMDB CDN
  */
 
+import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
-import crypto from 'crypto';
 import type { PrismaClient } from '@prisma/client';
+import { getImageCacheDir } from './paths.js';
+import { createLogger } from './runtime-logger.js';
 
-const CACHE_DIR = process.env.IMAGE_CACHE_DIR || './data/image-cache';
+const CACHE_DIR = getImageCacheDir();
 const METADATA_DIR = path.join(CACHE_DIR, '.metadata');
 const MAX_CACHE_SIZE_MB = parseInt(process.env.MAX_CACHE_SIZE_MB || '1000', 10);
 const MIN_FILE_SIZE = 100;
+const log = createLogger('image-cache');
 
 const cacheQueue = new Set<string>();
 const processingQueue = new Set<string>();
@@ -86,7 +89,10 @@ async function cleanupTempFiles(): Promise<void> {
           }
         } catch (err) {
           if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-            console.warn(`Failed to remove temp file ${file}:`, (err as Error).message);
+            log.warn('Failed to remove temp cache file', {
+              file,
+              error: (err as Error).message,
+            });
           }
         }
       }
@@ -108,7 +114,7 @@ async function processCacheQueue(): Promise<void> {
   let failedCount = 0;
 
   try {
-    console.log(`Starting cache queue processor. Queue size: ${cacheQueue.size}`);
+    log.info('Starting cache queue processor', { queueSize: cacheQueue.size });
 
     while ((cacheQueue.size > 0 || processingQueue.size > 0) && !queueProcessorStopped) {
       const urlsToProcess: string[] = [];
@@ -143,29 +149,43 @@ async function processCacheQueue(): Promise<void> {
           }
         } catch (error) {
           failedCount++;
-          console.error(`Error processing image ${url}:`, (error as Error).message);
+          log.error('Error processing queued image', {
+            url,
+            error: (error as Error).message,
+          });
         } finally {
           processingQueue.delete(url);
         }
       }
 
       if ((processedCount + failedCount) % 10 === 0) {
-        console.log(`Cache queue progress: ${processedCount} cached, ${failedCount} failed, ${cacheQueue.size} remaining`);
+        log.debug('Cache queue progress', {
+          cached: processedCount,
+          failed: failedCount,
+          remaining: cacheQueue.size,
+        });
       }
     }
 
-    console.log(`Cache queue processor finished. Total: ${processedCount} cached, ${failedCount} failed`);
+    log.info('Cache queue processor finished', {
+      cached: processedCount,
+      failed: failedCount,
+    });
 
     // Clear any 404 URLs from the database
     if (prismaRef && notFoundUrls.size > 0) {
       try {
         await clearInvalidImageUrls(prismaRef);
       } catch (err) {
-        console.error('Error clearing invalid image URLs:', (err as Error).message);
+        log.error('Failed to clear invalid image URLs from database', {
+          error: (err as Error).message,
+        });
       }
     }
   } catch (error) {
-    console.error('Error in cache queue processor:', (error as Error).message);
+    log.error('Unhandled error in cache queue processor', {
+      error: (error as Error).message,
+    });
   } finally {
     queueProcessorRunning = false;
   }
@@ -214,7 +234,9 @@ async function queueImageForCaching(url: string): Promise<boolean> {
 
   setImmediate(() => {
     processCacheQueue().catch(err =>
-      console.error('Error processing cache queue:', (err as Error).message)
+      log.error('Failed to start cache queue processor', {
+        error: (err as Error).message,
+      })
     );
   });
 
@@ -274,7 +296,10 @@ async function validateImageFile(filepath: string): Promise<boolean> {
     const stats = await fs.stat(filepath);
 
     if (stats.size < MIN_FILE_SIZE) {
-      console.warn(`Image file too small: ${filepath} (${stats.size} bytes)`);
+      log.debug('Image file is too small to be valid', {
+        filepath,
+        sizeBytes: stats.size,
+      });
       return false;
     }
 
@@ -289,13 +314,16 @@ async function validateImageFile(filepath: string): Promise<boolean> {
     const isGIF = buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46;
 
     if (!isPNG && !isJPEG && !isWebP && !isGIF) {
-      console.warn(`Invalid image format: ${filepath}`);
+      log.debug('Image file has invalid format signature', { filepath });
       return false;
     }
 
     return true;
   } catch (error) {
-    console.error(`Error validating image file: ${filepath}`, (error as Error).message);
+    log.error('Error validating image file', {
+      filepath,
+      error: (error as Error).message,
+    });
     return false;
   }
 }
@@ -332,12 +360,17 @@ async function getCacheSize(): Promise<number> {
         }
       } catch (statError) {
         if ((statError as NodeJS.ErrnoException).code !== 'ENOENT') {
-          console.warn(`Error statting file ${file}:`, (statError as Error).message);
+          log.debug('Failed to stat cache file while calculating size', {
+            file,
+            error: (statError as Error).message,
+          });
         }
       }
     }
   } catch (error) {
-    console.error('Error calculating cache size:', (error as Error).message);
+    log.error('Error calculating cache size', {
+      error: (error as Error).message,
+    });
   }
 
   return totalSize;
@@ -370,12 +403,17 @@ async function getCachedFiles(): Promise<CachedFile[]> {
         }
       } catch (statError) {
         if ((statError as NodeJS.ErrnoException).code !== 'ENOENT') {
-          console.warn(`Error statting file ${entry}:`, (statError as Error).message);
+          log.debug('Failed to stat cache file while listing cache', {
+            file: entry,
+            error: (statError as Error).message,
+          });
         }
       }
     }
   } catch (error) {
-    console.error('Error getting cached files:', (error as Error).message);
+    log.error('Error loading cached files', {
+      error: (error as Error).message,
+    });
   }
 
   return files.sort((a, b) => new Date(a.lastAccess).getTime() - new Date(b.lastAccess).getTime());
@@ -389,7 +427,10 @@ export async function evictOldFiles(): Promise<{ evicted: number; freedBytes: nu
     return { evicted: 0, freedBytes: 0 };
   }
 
-  console.log(`Cache size ${(currentSize / 1024 / 1024).toFixed(2)}MB exceeds limit ${MAX_CACHE_SIZE_MB}MB, evicting old files...`);
+  log.info('Cache size exceeds limit; evicting old files', {
+    currentSizeMB: Number((currentSize / 1024 / 1024).toFixed(2)),
+    maxSizeMB: MAX_CACHE_SIZE_MB,
+  });
 
   const files = await getCachedFiles();
   let freedBytes = 0;
@@ -415,13 +456,22 @@ export async function evictOldFiles(): Promise<{ evicted: number; freedBytes: nu
       totalSize -= file.size;
       evicted++;
 
-      console.log(`Evicted: ${file.filename} (${(file.size / 1024).toFixed(2)}KB)`);
+      log.debug('Evicted cache file', {
+        filename: file.filename,
+        sizeKB: Number((file.size / 1024).toFixed(2)),
+      });
     } catch (error) {
-      console.error(`Failed to evict file: ${file.filename}`, (error as Error).message);
+      log.error('Failed to evict cache file', {
+        filename: file.filename,
+        error: (error as Error).message,
+      });
     }
   }
 
-  console.log(`Eviction complete: removed ${evicted} files, freed ${(freedBytes / 1024 / 1024).toFixed(2)}MB`);
+  log.info('Cache eviction complete', {
+    evictedFiles: evicted,
+    freedMB: Number((freedBytes / 1024 / 1024).toFixed(2)),
+  });
 
   return { evicted, freedBytes };
 }
@@ -499,17 +549,26 @@ export async function cacheImage(url: string, retryCount = 0): Promise<string | 
       const delayMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : Math.pow(2, retryCount) * 1000;
 
       if (retryCount < 3) {
-        console.warn(`Rate limited for ${url}, retrying in ${delayMs}ms (attempt ${retryCount + 1}/3)`);
+        log.warn('Rate limited while caching image; retrying', {
+          url,
+          delayMs,
+          attempt: retryCount + 1,
+          maxAttempts: 3,
+        });
         await new Promise(resolve => setTimeout(resolve, delayMs));
         return cacheImage(url, retryCount + 1);
       } else {
-        console.warn(`Rate limit exceeded and max retries reached for ${url}`);
+        log.warn('Rate limit retries exhausted while caching image', { url });
         return null;
       }
     }
 
     if (!response.ok) {
-      console.error(`Failed to download image: ${url} - ${response.status} ${response.statusText}`);
+      log.warn('Image download failed', {
+        url,
+        status: response.status,
+        statusText: response.statusText,
+      });
       // Track 404 URLs so they can be cleared from the database
       if (response.status === 404) {
         notFoundUrls.add(url);
@@ -520,7 +579,7 @@ export async function cacheImage(url: string, retryCount = 0): Promise<string | 
     const buffer = Buffer.from(await response.arrayBuffer());
 
     if (buffer.length === 0) {
-      console.error(`Downloaded image is empty: ${url}`);
+      log.warn('Downloaded image is empty', { url });
       return null;
     }
 
@@ -532,7 +591,7 @@ export async function cacheImage(url: string, retryCount = 0): Promise<string | 
     const isValid = await validateImageFile(tempPath);
     if (!isValid) {
       await fs.unlink(tempPath).catch(() => {});
-      console.error(`Downloaded image failed validation: ${url}`);
+      log.warn('Downloaded image failed validation', { url });
       return null;
     }
 
@@ -556,7 +615,10 @@ export async function cacheImage(url: string, retryCount = 0): Promise<string | 
 
     return filename;
   } catch (error) {
-    console.error(`Error caching image: ${url}`, (error as Error).message);
+    log.error('Error caching image', {
+      url,
+      error: (error as Error).message,
+    });
     return null;
   }
 }
@@ -578,7 +640,7 @@ export async function cacheImages(urls: string[], concurrency = 5): Promise<Reco
 
 export async function getCachedImage(filename: string): Promise<Buffer | null> {
   if (!validateFilename(filename)) {
-    console.warn(`Invalid filename rejected: ${filename}`);
+    log.debug('Rejected invalid cached filename', { filename });
     return null;
   }
 
@@ -595,7 +657,7 @@ export async function getCachedImage(filename: string): Promise<Buffer | null> {
       ...metadata,
       accessCount: (metadata?.accessCount || 0) + 1,
       lastAccess: new Date().toISOString(),
-    }).catch(err => console.error('Failed to update metadata:', (err as Error).message));
+    }).catch(err => log.warn('Failed to update cache metadata', { filename, error: (err as Error).message }));
 
     return await fs.readFile(filepath);
   } catch {
@@ -605,7 +667,7 @@ export async function getCachedImage(filename: string): Promise<Buffer | null> {
 
 export async function getCachedImageWithStats(filename: string): Promise<CachedImageWithStats | null> {
   if (!validateFilename(filename)) {
-    console.warn(`Invalid filename rejected: ${filename}`);
+    log.debug('Rejected invalid cached filename', { filename });
     return null;
   }
 
@@ -627,7 +689,7 @@ export async function getCachedImageWithStats(filename: string): Promise<CachedI
       ...metadata,
       accessCount: (metadata?.accessCount || 0) + 1,
       lastAccess: new Date().toISOString(),
-    }).catch(err => console.error('Failed to update metadata:', (err as Error).message));
+    }).catch(err => log.warn('Failed to update cache metadata', { filename, error: (err as Error).message }));
 
     return {
       buffer,
@@ -669,14 +731,19 @@ export async function clearOldCache(maxAgeDays = 30): Promise<number> {
         }
       } catch (statError) {
         if ((statError as NodeJS.ErrnoException).code !== 'ENOENT') {
-          console.warn(`Error statting file ${file} during cache clear:`, (statError as Error).message);
+          log.debug('Failed to stat cache file during cache clear', {
+            file,
+            error: (statError as Error).message,
+          });
         }
       }
     }
 
     return cleared;
   } catch (error) {
-    console.error('Error clearing cache:', (error as Error).message);
+    log.error('Error clearing old cache files', {
+      error: (error as Error).message,
+    });
     return 0;
   }
 }
@@ -699,7 +766,9 @@ export async function getCacheStats(): Promise<CacheStats | null> {
       newestFile: files.length > 0 ? files[files.length - 1]! : null,
     };
   } catch (error) {
-    console.error('Error getting cache stats:', (error as Error).message);
+    log.error('Error getting cache stats', {
+      error: (error as Error).message,
+    });
     return null;
   }
 }
@@ -726,7 +795,10 @@ export async function getCachedImageUrl(tmdbUrl: string): Promise<string> {
     const metadata = await getMetadata(cachedFilename);
     if (metadata?.url && metadata.url.startsWith('https://image.tmdb.org/')) {
       queueImageForCaching(metadata.url).catch(err =>
-        console.warn(`Failed to queue missing cached image: ${metadata.url}`, (err as Error).message)
+        log.warn('Failed to queue missing cached image', {
+          url: metadata.url,
+          error: (err as Error).message,
+        })
       );
     }
     return tmdbUrl;
@@ -762,7 +834,10 @@ export async function getCachedImageUrl(tmdbUrl: string): Promise<string> {
   // Always queue if not cached, but return the expected cache path
   // The image endpoint will handle actual caching on first request
   await queueImageForCaching(tmdbUrl).catch(err =>
-    console.warn(`Failed to queue image for caching: ${tmdbUrl}`, (err as Error).message)
+    log.warn('Failed to queue image for caching', {
+      url: tmdbUrl,
+      error: (err as Error).message,
+    })
   );
 
   return `/api/v1/images/cache/${filename}`;
@@ -845,19 +920,29 @@ export async function queueMissingImages(prisma: PrismaClient): Promise<{
       }
     }
 
-    console.log(`Image cache queue: ${queued} queued, ${alreadyCached} already cached, ${missingMetadata} missing metadata (${cacheQueue.size} in queue, ${processingQueue.size} processing)`);
+    log.info('Image cache queue scan complete', {
+      queued,
+      alreadyCached,
+      missingMetadata,
+      queueSize: cacheQueue.size,
+      processing: processingQueue.size,
+    });
 
     if (cacheQueue.size > 0) {
       setImmediate(() => {
         processCacheQueue().catch(err =>
-          console.error('Error starting cache queue processor:', (err as Error).message)
+          log.error('Failed to start cache queue processor', {
+            error: (err as Error).message,
+          })
         );
       });
     }
 
     return { queued, alreadyCached, missingMetadata, queueSize: cacheQueue.size };
   } catch (error) {
-    console.error('Error queueing missing images:', (error as Error).message);
+    log.error('Error while queueing missing images', {
+      error: (error as Error).message,
+    });
     return { queued: 0, error: (error as Error).message };
   }
 }
@@ -909,7 +994,9 @@ export async function clearInvalidImageUrls(prisma: PrismaClient): Promise<{
     return { cleared: 0, urls: [] };
   }
 
-  console.log(`Clearing ${urls.length} invalid image URLs from database...`);
+  log.info('Clearing invalid image URLs from database', {
+    count: urls.length,
+  });
 
   let cleared = 0;
 
@@ -929,7 +1016,7 @@ export async function clearInvalidImageUrls(prisma: PrismaClient): Promise<{
 
       const count = posterResult.count + backdropResult.count;
       if (count > 0) {
-        console.log(`Cleared ${count} references to invalid image: ${url}`);
+        log.debug('Cleared references to invalid image URL', { url, count });
         cleared += count;
       }
 
@@ -938,11 +1025,14 @@ export async function clearInvalidImageUrls(prisma: PrismaClient): Promise<{
       const metadataPath = path.join(METADATA_DIR, `${filename}.json`);
       await fs.unlink(metadataPath).catch(() => {});
     } catch (error) {
-      console.error(`Error clearing invalid image URL ${url}:`, (error as Error).message);
+      log.error('Error clearing invalid image URL', {
+        url,
+        error: (error as Error).message,
+      });
     }
   }
 
-  console.log(`Cleared ${cleared} total invalid image references`);
+  log.info('Cleared invalid image URL references', { cleared });
 
   return { cleared, urls };
 }

@@ -35,6 +35,69 @@ export class CollectionService {
     this.log = options.log;
   }
 
+  private buildFallbackKey(mediaType: string, title: string, year: number | null): string {
+    return `${mediaType}:${title.trim().toLowerCase()}:${year ?? 'na'}`;
+  }
+
+  private dedupeItemsByIdentity(items: RefreshedItem[]): RefreshedItem[] {
+    const keyToIndex = new Map<string, number>();
+    const deduped: RefreshedItem[] = [];
+
+    const getKeys = (item: RefreshedItem): string[] => {
+      const keys: string[] = [];
+      if (item.tmdbId) keys.push(`tmdb:${item.tmdbId}`);
+      if (item.imdbId) keys.push(`imdb:${item.imdbId}`);
+      if (item.tvdbId) keys.push(`tvdb:${item.tvdbId}`);
+      keys.push(`fallback:${this.buildFallbackKey(item.mediaType, item.title, item.year)}`);
+      return keys;
+    };
+
+    for (const item of items) {
+      const keys = getKeys(item);
+      const existingIndex = keys
+        .map((key) => keyToIndex.get(key))
+        .find((index): index is number => index !== undefined);
+
+      if (existingIndex === undefined) {
+        const index = deduped.push({ ...item }) - 1;
+        for (const key of keys) {
+          keyToIndex.set(key, index);
+        }
+        continue;
+      }
+
+      const existing = deduped[existingIndex];
+      if (!existing) {
+        continue;
+      }
+
+      deduped[existingIndex] = {
+        ...existing,
+        ...item,
+        mediaType: existing.mediaType || item.mediaType,
+        title: existing.title || item.title,
+        year: existing.year ?? item.year,
+        imdbId: existing.imdbId ?? item.imdbId,
+        tmdbId: existing.tmdbId ?? item.tmdbId,
+        traktId: existing.traktId ?? item.traktId,
+        tvdbId: existing.tvdbId ?? item.tvdbId,
+        posterPath: existing.posterPath ?? item.posterPath,
+        backdropPath: existing.backdropPath ?? item.backdropPath,
+        rating: existing.rating ?? item.rating,
+        ratingCount: existing.ratingCount ?? item.ratingCount,
+      };
+
+      const merged = deduped[existingIndex];
+      if (merged) {
+        for (const key of getKeys(merged)) {
+          keyToIndex.set(key, existingIndex);
+        }
+      }
+    }
+
+    return deduped;
+  }
+
   /**
    * Refresh a collection from its source
    */
@@ -62,105 +125,138 @@ export class CollectionService {
       const collection = await this.prisma.collection.findUnique({
         where: { id: collectionId },
       });
-      if (collection) {
-        const accessToken = await ensureValidTraktTokens(this.prisma, this.config);
-        const items = await refreshFromTrakt(collection, accessToken, this.config);
-        const seenTmdbIds = new Set<string>();
-        const dedupedItems = items.filter((item) => {
-          if (item.tmdbId) {
-            if (seenTmdbIds.has(item.tmdbId)) {
-              return false;
-            }
-            seenTmdbIds.add(item.tmdbId);
-          }
-          return true;
+      if (!collection) {
+        return 0;
+      }
+
+      const accessToken = await ensureValidTraktTokens(this.prisma, this.config);
+      const items = await refreshFromTrakt(collection, accessToken, this.config);
+      const dedupedItems = this.dedupeItemsByIdentity(items);
+
+      if (dedupedItems.length === 0) {
+        await this.prisma.collectionItem.deleteMany({
+          where: { collectionId },
+        });
+        totalItems = 0;
+      } else {
+        const existingItems = await this.prisma.collectionItem.findMany({
+          where: { collectionId },
+          select: {
+            id: true,
+            mediaType: true,
+            title: true,
+            year: true,
+            imdbId: true,
+            tmdbId: true,
+            tvdbId: true,
+            inEmby: true,
+            embyItemId: true,
+          },
         });
 
-        if (dedupedItems.length === 0) {
+        const existingByImdb = new Map(existingItems.filter(item => item.imdbId).map(item => [item.imdbId!, item]));
+        const existingByTmdb = new Map(existingItems.filter(item => item.tmdbId).map(item => [item.tmdbId!, item]));
+        const existingByTvdb = new Map(existingItems.filter(item => item.tvdbId).map(item => [item.tvdbId!, item]));
+        const existingByFallback = new Map(
+          existingItems.map((item) => [this.buildFallbackKey(item.mediaType, item.title, item.year), item])
+        );
+        const retainedItemIds = new Set<string>();
+
+        // Upsert/update items to preserve existing data during refresh and avoid duplicates.
+        for (const item of dedupedItems) {
+          const existingByImdbItem = item.imdbId ? existingByImdb.get(item.imdbId) : undefined;
+          const existingByTmdbItem = item.tmdbId ? existingByTmdb.get(item.tmdbId) : undefined;
+          const existingByTvdbItem = item.tvdbId ? existingByTvdb.get(item.tvdbId) : undefined;
+          const fallbackKey = this.buildFallbackKey(item.mediaType, item.title, item.year);
+          const existing = existingByImdbItem || existingByTmdbItem || existingByTvdbItem || existingByFallback.get(fallbackKey);
+
+          const inEmby = existing?.inEmby ?? false;
+          const embyItemId = existing?.embyItemId ?? null;
+
+          if (existing) {
+            try {
+              const updated = await this.prisma.collectionItem.update({
+                where: { id: existing.id },
+                data: {
+                  ...item,
+                  inEmby,
+                  embyItemId,
+                },
+                select: { id: true },
+              });
+              retainedItemIds.add(updated.id);
+              continue;
+            } catch (error) {
+              if (!item.tmdbId) {
+                throw error;
+              }
+            }
+          }
+
+          if (item.tmdbId) {
+            const upserted = await this.prisma.collectionItem.upsert({
+              where: {
+                collectionId_tmdbId: {
+                  collectionId,
+                  tmdbId: item.tmdbId,
+                },
+              },
+              create: {
+                collectionId,
+                ...item,
+                inEmby,
+                embyItemId,
+              },
+              update: {
+                ...item,
+                inEmby,
+                embyItemId,
+              },
+              select: { id: true },
+            });
+            retainedItemIds.add(upserted.id);
+          } else {
+            const created = await this.prisma.collectionItem.create({
+              data: {
+                collectionId,
+                ...item,
+                inEmby,
+                embyItemId,
+              },
+              select: { id: true },
+            });
+            retainedItemIds.add(created.id);
+          }
+        }
+
+        const retainedIds = Array.from(retainedItemIds);
+        if (retainedIds.length > 0) {
+          await this.prisma.collectionItem.deleteMany({
+            where: {
+              collectionId,
+              id: { notIn: retainedIds },
+            },
+          });
+        } else {
           await this.prisma.collectionItem.deleteMany({
             where: { collectionId },
           });
-          totalItems = 0;
-        } else {
-          const existingItems = await this.prisma.collectionItem.findMany({
-            where: { collectionId },
-            select: {
-              imdbId: true,
-              tmdbId: true,
-              tvdbId: true,
-              inEmby: true,
-              embyItemId: true,
-            },
-          });
-
-          const existingByImdb = new Map(existingItems.filter(item => item.imdbId).map(item => [item.imdbId!, item]));
-          const existingByTmdb = new Map(existingItems.filter(item => item.tmdbId).map(item => [item.tmdbId!, item]));
-          const existingByTvdb = new Map(existingItems.filter(item => item.tvdbId).map(item => [item.tvdbId!, item]));
-
-          // Upsert items to preserve existing data during refresh (prevents empty state)
-          for (const item of dedupedItems) {
-            const existingByImdbItem = item.imdbId ? existingByImdb.get(item.imdbId) : undefined;
-            const existingByTmdbItem = item.tmdbId ? existingByTmdb.get(item.tmdbId) : undefined;
-            const existingByTvdbItem = item.tvdbId ? existingByTvdb.get(item.tvdbId) : undefined;
-            const existing = existingByImdbItem || existingByTmdbItem || existingByTvdbItem;
-
-            if (item.tmdbId) {
-              await this.prisma.collectionItem.upsert({
-                where: {
-                  collectionId_tmdbId: {
-                    collectionId,
-                    tmdbId: item.tmdbId,
-                  },
-                },
-                create: {
-                  collectionId,
-                  ...item,
-                  inEmby: existing?.inEmby ?? false,
-                  embyItemId: existing?.embyItemId ?? null,
-                },
-                update: {
-                  ...item,
-                  inEmby: existing?.inEmby ?? false,
-                  embyItemId: existing?.embyItemId ?? null,
-                },
-              });
-            } else {
-              await this.prisma.collectionItem.create({
-                data: {
-                  collectionId,
-                  ...item,
-                  inEmby: existing?.inEmby ?? false,
-                  embyItemId: existing?.embyItemId ?? null,
-                },
-              });
-            }
-          }
-
-          // Remove stale items (items that no longer exist in the source)
-          const newTmdbIds = dedupedItems.map(item => item.tmdbId).filter(Boolean) as string[];
-          if (newTmdbIds.length > 0) {
-            await this.prisma.collectionItem.deleteMany({
-              where: {
-                collectionId,
-                tmdbId: { notIn: newTmdbIds },
-              },
-            });
-          }
-
-          totalItems = dedupedItems.length;
         }
+
+        totalItems = dedupedItems.length;
       }
     }
 
-    if (totalItems > 0) {
-      await this.prisma.collection.update({
-        where: { id: collectionId },
-        data: { lastSyncAt: new Date() },
-      });
+    await this.prisma.collection.update({
+      where: { id: collectionId },
+      data: { lastSyncAt: new Date() },
+    });
 
+    if (totalItems > 0) {
       await syncCollections({
         prisma: this.prisma,
         collectionId,
+        logger: this.log,
       });
 
       const collectionSettings = await this.prisma.collection.findUnique({
@@ -173,10 +269,9 @@ export class CollectionService {
           this.log.warn(`Auto-download failed for collection ${collectionId}: ${(error as Error).message}`);
         });
       }
-
-      this.log.info(`Refresh completed for collection ${collectionId}: ${totalItems} items`);
     }
 
+    this.log.info(`Refresh completed for collection ${collectionId}: ${totalItems} items`);
     return totalItems;
   }
 
